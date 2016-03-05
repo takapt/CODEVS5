@@ -487,7 +487,7 @@ struct InputInfo
 {
     int ms;
     array<int, SKILLS> skill_costs;
-    PlayerInfo me, enemy;
+    PlayerInfo my_info, enemy_info;
 };
 InputInfo input()
 {
@@ -502,8 +502,8 @@ InputInfo input()
     rep(i, SKILLS)
         cin >> input_info.skill_costs[i];
 
-    input_info.me = input_player_info();
-    input_info.enemy = input_player_info();
+    input_info.my_info = input_player_info();
+    input_info.enemy_info = input_player_info();
 
     return input_info;
 }
@@ -517,30 +517,30 @@ int main()
     {
         InputInfo input_info = input();
 
-        auto me = input_info.me;
-        auto move_results = simulate_move(me.state.ninjas, me.state.rock, me.state.dogs);
+        auto my_info = input_info.my_info;
+        auto move_results = simulate_move(my_info.state.ninjas, my_info.state.rock, my_info.state.dogs);
 
         static State prev_state;
 //         dump(turn);
         if (turn > 0)
         {
-//             auto p = vector<Pos>(all(me.state.ninjas));
+//             auto p = vector<Pos>(all(my_info.state.ninjas));
 //             auto q = vector<Pos>(all(prev_state.ninjas));
 //             dump(p);
 //             dump(q);
-            if (me.state.ninjas != prev_state.ninjas || me.state.rock != prev_state.rock)
+            if (my_info.state.ninjas != prev_state.ninjas || my_info.state.rock != prev_state.rock)
             {
-                ofstream ng("dame");
+                ofstream ng("damy_info");
                 ng << "unko" << endl;
                 ng.close();
             }
-            assert(me.state.ninjas == prev_state.ninjas);
-            assert(me.state.rock == prev_state.rock);
+            assert(my_info.state.ninjas == prev_state.ninjas);
+            assert(my_info.state.rock == prev_state.rock);
         }
 
         cout << 2 << endl;
         {
-            set<Pos> soul_set(all(me.state.souls));
+            set<Pos> soul_set(all(my_info.state.souls));
             SimulateMoveResult result;
             while (true)
             {
@@ -549,7 +549,7 @@ int main()
                 bool ok = true;
                 rep(ninja_id, NINJAS)
                 {
-                    Pos p = me.state.ninjas[ninja_id];
+                    Pos p = my_info.state.ninjas[ninja_id];
                     for (int dir : result.moves[ninja_id])
                     {
                         p.move(dir);
