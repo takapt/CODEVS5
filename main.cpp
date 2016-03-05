@@ -371,10 +371,13 @@ vector<SimulateMoveResult> simulate_move(const array<Pos, NINJAS>& init_ninjas, 
                         if (!rock.get(next))
                             return true;
                         else
-                            return !rock.get(next)
-                                && !is_dog.get(next)
-                                && next.next(dir) != ninjas[ninja_id ^ 1]
-                                && in_field(next.next(dir));
+                        {
+                            Pos next2 = next.next(dir);
+                            return in_field(next2)
+                                && !rock.get(next2)
+                                && !is_dog.get(next2)
+                                && next2 != ninjas[ninja_id ^ 1];
+                        }
                     };
 
                     if (can_move())
