@@ -202,6 +202,44 @@ bool in_field(const Pos& p)
     return in_field(p.x, p.y);
 }
 
+template <typename T>
+class Array2d
+{
+public:
+    Array2d()
+    {
+    }
+
+    Array2d(T init)
+    {
+        rep(y, h) rep(x, w)
+            a[y][x] = init;
+    }
+
+    T get(int x, int y) const
+    {
+        assert(in_field(x, y));
+        return a[y][x];
+    }
+    T get(const Pos& p) const
+    {
+        return get(p.x, p.y);
+    }
+
+    void set(int x, int y, const T& v)
+    {
+        assert(in_field(x, y));
+        a[y][x] = v;
+    }
+    void set(const Pos& pos, const T& v)
+    {
+        set(pos.x, pos.y, v);
+    }
+
+private:
+    int a[h][16];
+};
+
 class BoolBoard
 {
 public:
@@ -317,7 +355,17 @@ struct Dog
 {
     Pos pos;
     int id;
+
+    bool operator<(const Dog& other) const
+    {
+        return pos < other.pos || id < other.id;
+    }
 };
+ostream& operator<<(ostream& os, const Dog& dog)
+{
+    os << "[" << dog.pos << ", " << dog.id << "]";
+    return os;
+}
 
 struct State 
 {
@@ -411,6 +459,81 @@ vector<SimulateMoveResult> simulate_move(const array<Pos, NINJAS>& init_ninjas, 
     for (auto& it : dp)
         results.push_back(SimulateMoveResult{it.first.first, it.first.second, it.second});
     return results;
+}
+
+vector<Dog> simulate_dog(const vector<Dog>& init_dogs, const vector<Pos>& ninjas, const BoolBoard& rock)
+{
+    assert(0 < ninjas.size() && ninjas.size() <= 2);
+    if (init_dogs.empty())
+        return {};
+
+    const int inf = 810;
+    Array2d<int> dist(inf);
+
+    queue<Pos> q;
+    for (auto& p : ninjas)
+    {
+        dist.set(p, 0);
+        q.push(p);
+    }
+    while (!q.empty())
+    {
+        Pos cur = q.front();
+        q.pop();
+
+        const int nd = dist.get(cur) + 1;
+        rep(dir, 4)
+        {
+            Pos next = cur.next(dir);
+            if (in_field(next) && !rock.get(next) && dist.get(next) == inf)
+            {
+                dist.set(next, nd);
+                q.push(next);
+            }
+        }
+    }
+
+    vector<Dog> order = init_dogs;
+    const auto cmp = [&](const Dog& a, const Dog& b)
+    {
+        return dist.get(a.pos) < dist.get(b.pos) || a.id < b.id;
+    };
+    sort(all(order), cmp);
+
+    BoolBoard is_dog;
+    for (auto& dog : order)
+    {
+        assert(!rock.get(dog.pos));
+        is_dog.set(dog.pos, true);
+    }
+
+    for (auto& dog : order)
+    {
+        const Pos& p = dog.pos;
+        if (dist.get(p) == inf)
+            continue;
+
+        for (int dir : DOG_DIR_ORDER)
+        {
+            const Pos next = p.next(dir);
+            if (in_field(next)
+                && !rock.get(next)
+                && !is_dog.get(next)
+                && dist.get(p) == dist.get(next) + 1)
+            {
+                dog.pos = next;
+                is_dog.set(p, false);
+                is_dog.set(next, true);
+                break;
+            }
+        }
+    }
+
+    return order;
+}
+vector<Dog> simulate_dog(const vector<Dog>& init_dogs, const array<Pos, NINJAS>& ninjas, const BoolBoard& rock)
+{
+    return simulate_dog(init_dogs, vector<Pos>(all(ninjas)), rock);
 }
 
 struct PlayerInfo
@@ -511,7 +634,7 @@ InputInfo input()
     return input_info;
 }
 
-int main()
+void test_simulate_move()
 {
     cout << "takaptAI" << endl;
     cout.flush();
@@ -524,13 +647,13 @@ int main()
         auto move_results = simulate_move(my_info.state.ninjas, my_info.state.rock, my_info.state.dogs);
 
         static State prev_state;
-//         dump(turn);
+        //         dump(turn);
         if (turn > 0)
         {
-//             auto p = vector<Pos>(all(my_info.state.ninjas));
-//             auto q = vector<Pos>(all(prev_state.ninjas));
-//             dump(p);
-//             dump(q);
+            //             auto p = vector<Pos>(all(my_info.state.ninjas));
+            //             auto q = vector<Pos>(all(prev_state.ninjas));
+            //             dump(p);
+            //             dump(q);
             if (my_info.state.ninjas != prev_state.ninjas || my_info.state.rock != prev_state.rock)
             {
                 ofstream ng("damy_info");
@@ -568,6 +691,74 @@ int main()
 
             prev_state.ninjas = result.ninjas;
             prev_state.rock = result.rock;
+        }
+        cout.flush();
+    }
+}
+
+int main()
+{
+    cout << "takaptAI" << endl;
+    cout.flush();
+
+    rep(turn, 300)
+    {
+        InputInfo input_info = input();
+
+        auto my_info = input_info.my_info;
+        auto move_results = simulate_move(my_info.state.ninjas, my_info.state.rock, my_info.state.dogs);
+
+        static State simu_state;
+//         dump(turn);
+        if (turn > 0)
+        {
+//             auto p = vector<Pos>(all(my_info.state.ninjas));
+//             auto q = vector<Pos>(all(simu_state.ninjas));
+//             dump(p);
+//             dump(q);
+            set<Dog> dog_set(all(my_info.state.dogs));
+            bool ok_dog = true;
+            for (auto& dog : simu_state.dogs)
+                ok_dog &= dog_set.count(dog);
+//             if (my_info.state.ninjas != simu_state.ninjas || my_info.state.rock != simu_state.rock || !ok_dog)
+//             {
+//                 dump(turn);
+//                 dump(my_info.state.dogs);
+//                 dump(simu_state.dogs);
+//                 ofstream ng("damy_info");
+//                 ng << "unko" << endl;
+//                 ng.close();
+//             }
+            assert(my_info.state.ninjas == simu_state.ninjas);
+            assert(my_info.state.rock == simu_state.rock);
+        }
+
+        {
+            set<Pos> soul_set(all(my_info.state.souls));
+            SimulateMoveResult result;
+            int r = 91 % move_results.size();
+            result = move_results[r];
+
+            bool sha = my_info.state.mp >= input_info.skill_costs[5];
+            Pos sha_pos = Pos(1 + rand() % (w - 2), 1 + rand() % (h - 2));
+            assert(in_field(sha_pos));
+            vector<Pos> nin = sha ? vector<Pos>{sha_pos} : vector<Pos>(all(result.ninjas));
+
+            if(!sha)
+            {
+                cout << 2 << endl;
+            }
+            else
+            {
+                cout << 3 << endl;
+                cout << 5 << " " << sha_pos.y << " " << sha_pos.x << endl;
+            }
+            rep(i, NINJAS)
+                cout << format_moves(result.moves[i]) << endl;
+
+            simu_state.ninjas = result.ninjas;
+            simu_state.rock = result.rock;
+            simu_state.dogs = simulate_dog(my_info.state.dogs, nin, result.rock);
         }
         cout.flush();
     }
