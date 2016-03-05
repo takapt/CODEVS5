@@ -37,6 +37,7 @@ template <typename T> ostream& operator<<(ostream& os, const multiset<T>& c) { p
 template <typename T> ostream& operator<<(ostream& os, const deque<T>& c) { print_container(os, c); return os; }
 template <typename T, typename U> ostream& operator<<(ostream& os, const map<T, U>& c) { print_container(os, c); return os; }
 template <typename T, typename U> ostream& operator<<(ostream& os, const pair<T, U>& p) { os << "(" << p.first << ", " << p.second << ")"; return os; }
+template <typename T, std::size_t N> ostream& operator<<(ostream& os, const array<T, N>& c) { print_container(os, vector<T>(c.begin(), c.end())); return os; }
 
 template <typename T> void print(T a, int n, const string& split = " ") { for (int i = 0; i < n; i++) { cerr << a[i]; if (i + 1 != n) cerr << split; } cerr << endl; }
 template <typename T> void print2d(T a, int w, int h, int width = -1, int br = 0) { for (int i = 0; i < h; ++i) { for (int j = 0; j < w; ++j) { if (width != -1) cerr.width(width); cerr << a[i][j] << ' '; } cerr << endl; } while (br--) cerr << endl; }
@@ -66,6 +67,18 @@ typedef unsigned long long ull;
 const int DX[] = { +0, +1, +0, -1 };
 const int DY[] = { +1, +0, -1, +0 };
 const char* S_DIR = "DRUL";
+string format_moves(const vector<int>& moves)
+{
+    assert(moves.size() <= 3);
+
+    if (moves.size() == 0)
+        return "N";
+
+    string s;
+    for (int dir : moves)
+        s += S_DIR[dir];
+    return s;
+}
 
 const int h = 17;
 const int w = 14;
@@ -180,6 +193,15 @@ bool in_rect(const Pos& p)
     return in_rect(p.x, p.y);
 }
 
+bool in_field(int x, int y)
+{
+    return 0 < x && x < w - 1 && 0 < y && y < h - 1;
+}
+bool in_field(const Pos& p)
+{
+    return in_field(p.x, p.y);
+}
+
 class BoolBoard
 {
 public:
@@ -189,7 +211,7 @@ public:
 
     bool get(int x, int y) const
     {
-        assert(in_rect(x, y, w, h));
+        assert(in_field(x, y));
         return f[y][x];
     }
     bool get(const Pos& p) const
@@ -199,12 +221,35 @@ public:
 
     void set(int x, int y, bool v)
     {
-        assert(in_rect(x, y, w, h));
+        assert(in_field(x, y));
         f[y][x] = v;
     }
     void set(const Pos& pos, bool v)
     {
         set(pos.x, pos.y, v);
+    }
+
+    bool operator<(const BoolBoard& other) const
+    {
+        for (int y = 1; y < h - 1; ++y)
+            for (int x = 1; x < w - 1; ++x)
+                if (get(x, y) != other.get(x, y))
+                    return get(x, y) < other.get(x, y);
+        return false;
+    }
+
+    bool operator==(const BoolBoard& other) const
+    {
+        for (int y = 1; y < h - 1; ++y)
+            for (int x = 1; x < w - 1; ++x)
+                if (get(x, y) != other.get(x, y))
+                    return false;
+        return true;
+    }
+
+    bool operator!=(const BoolBoard& other) const
+    {
+        return !(*this == other);
     }
 
 private:
@@ -220,7 +265,7 @@ public:
         id(id), pos_(pos_)
     {
         assert(-1 <= id && id < SKILLS);
-        assert((id <= 0 || id == 7) || in_rect(pos_));
+        assert((id <= 0 || id == 7) || in_field(pos_));
     }
 
     bool is_skill() const
@@ -254,17 +299,17 @@ Skill slash(int ninja_id) { return Skill(7, Pos(ninja_id, -1)); }
 class Action
 {
 public:
-    Action(const array<vector<int>, NINJAS>& dirs, const Skill& skill) :
-        dirs(dirs), skill(skill)
+    Action(const array<vector<int>, NINJAS>& moves, const Skill& skill) :
+        moves(moves), skill(skill)
     {
 #ifdef DEBUG
         rep(i, NINJAS)
-            assert(dirs[i].size() <= (skill.id == 0 ? 3 : 2));
+            assert(moves[i].size() <= (skill.id == 0 ? 3 : 2));
 #endif
     }
 
 private:
-    array<vector<int>, NINJAS> dirs;
+    array<vector<int>, NINJAS> moves;
     Skill skill;
 };
 
@@ -283,23 +328,87 @@ struct State
     BoolBoard rock;
 };
 
-class Simulator
+struct SimulateMoveResult
 {
-public:
-    Simulator(const State& state) :
-        state(state)
+    array<Pos, NINJAS> ninjas;
+    BoolBoard rock;
+    array<vector<int>, NINJAS> moves;
+};
+vector<SimulateMoveResult> simulate_move(const array<Pos, NINJAS>& init_ninjas, const BoolBoard& init_rock, const vector<Dog>& dogs)
+{
+    BoolBoard is_dog;
+    for (auto& dog : dogs)
+        is_dog.set(dog.pos, true);
+
+    using P = pair<array<Pos, NINJAS>, BoolBoard>;
+    map<P, array<vector<int>, NINJAS>> dp;
+
+    vector<P> q;
+    q.push_back(make_pair(init_ninjas, init_rock));
+    dp[q.front()] = {};
+    rep(ninja_id, NINJAS)
     {
-        for (auto& dog : state.dogs)
-            dog_board.set(dog.pos, true);
-        for (auto& p : state.souls)
-            soul_board.set(p, true);
+        rep(moves, 2)
+        {
+            vector<P> nq;
+            for (const auto& key : q)
+            {
+                const auto& ninjas = key.first;
+                const auto& rock = key.second;
+                const auto& moves = dp[key];
+
+                rep(dir, 4)
+                {
+                    Pos cur = ninjas[ninja_id];
+                    Pos next = cur.next(dir);
+                    assert(!rock.get(cur));
+
+                    auto can_move = [&]()
+                    {
+                        if (!in_field(next))
+                            return false;
+
+                        if (!rock.get(next))
+                            return true;
+                        else
+                            return !rock.get(next)
+                                && !is_dog.get(next)
+                                && next.next(dir) != ninjas[ninja_id ^ 1]
+                                && in_field(next.next(dir));
+                    };
+
+                    if (can_move())
+                    {
+                        auto nninjas = ninjas;
+                        auto nrock = rock;
+                        nninjas[ninja_id] = next;
+                        if (rock.get(next))
+                        {
+                            nrock.set(next, false);
+                            nrock.set(next.next(dir), true);
+                        }
+
+                        auto nkey = make_pair(nninjas, nrock);
+                        if (!dp.count(nkey))
+                        {
+                            auto nmoves = moves;
+                            nmoves[ninja_id].push_back(dir);
+
+                            dp[nkey] = nmoves;
+                            nq.push_back(nkey);
+                        }
+                    }
+                }
+            }
+            q.swap(nq);
+        }
     }
 
-private:
-    const State& state;
-    BoolBoard dog_board;
-    BoolBoard soul_board;
-};
+    vector<SimulateMoveResult> results;
+    for (auto& it : dp)
+        results.push_back(SimulateMoveResult{it.first.first, it.first.second, it.second});
+    return results;
+}
 
 struct PlayerInfo
 {
@@ -317,6 +426,23 @@ PlayerInfo input_player_info()
     assert(h_ == h);
     assert(w_ == w);
 
+    rep(y, h)
+    {
+        string s;
+        cin >> s;
+        rep(x, w)
+        {
+            if (s[x] == 'O')
+                state.rock.set(x, y, true);
+            else if (s[x] == '_')
+                state.rock.set(x, y, false);
+            else
+            {
+                assert(in_rect(x, y) && !in_field(x, y));
+            }
+        }
+    }
+
     int num_ninjas;
     cin >> num_ninjas;
     assert(num_ninjas == NINJAS);
@@ -325,10 +451,10 @@ PlayerInfo input_player_info()
         int id;
         Pos p;
         cin >> id >> p.y >> p.x;
-        assert(in_rect(p));
+        assert(in_field(p));
         state.ninjas[id] = p;
     }
-    assert(in_rect(state.ninjas[0]) && in_rect(state.ninjas[1]));
+    assert(in_field(state.ninjas[0]) && in_field(state.ninjas[1]));
 
     int num_dogs;
     cin >> num_dogs;
@@ -336,7 +462,7 @@ PlayerInfo input_player_info()
     {
         Dog dog;
         cin >> dog.id >> dog.pos.y >> dog.pos.x;
-        assert(in_rect(dog.pos));
+        assert(in_field(dog.pos));
         state.dogs.push_back(dog);
     }
 
@@ -347,7 +473,7 @@ PlayerInfo input_player_info()
     {
         Pos p;
         cin >> p.y >> p.x;
-        assert(in_rect(p));
+        assert(in_field(p));
         state.souls.push_back(p);
     }
 
@@ -355,4 +481,91 @@ PlayerInfo input_player_info()
         cin >> info.skill_count[i];
 
     return info;
+}
+
+struct InputInfo
+{
+    int ms;
+    array<int, SKILLS> skill_costs;
+    PlayerInfo me, enemy;
+};
+InputInfo input()
+{
+    InputInfo input_info;
+    if (!(cin >> input_info.ms))
+        exit(0);
+
+    int skills_;
+    cin >> skills_;
+    assert(skills_ == SKILLS);
+
+    rep(i, SKILLS)
+        cin >> input_info.skill_costs[i];
+
+    input_info.me = input_player_info();
+    input_info.enemy = input_player_info();
+
+    return input_info;
+}
+
+int main()
+{
+    cout << "takaptAI" << endl;
+    cout.flush();
+
+    rep(turn, 300)
+    {
+        InputInfo input_info = input();
+
+        auto me = input_info.me;
+        auto move_results = simulate_move(me.state.ninjas, me.state.rock, me.state.dogs);
+
+        static State prev_state;
+//         dump(turn);
+        if (turn > 0)
+        {
+//             auto p = vector<Pos>(all(me.state.ninjas));
+//             auto q = vector<Pos>(all(prev_state.ninjas));
+//             dump(p);
+//             dump(q);
+            if (me.state.ninjas != prev_state.ninjas || me.state.rock != prev_state.rock)
+            {
+                ofstream ng("dame");
+                ng << "unko" << endl;
+                ng.close();
+            }
+            assert(me.state.ninjas == prev_state.ninjas);
+            assert(me.state.rock == prev_state.rock);
+        }
+
+        cout << 2 << endl;
+        {
+            set<Pos> soul_set(all(me.state.souls));
+            SimulateMoveResult result;
+            while (true)
+            {
+                int r = rand() % move_results.size();
+                result = move_results[r];
+                bool ok = true;
+                rep(ninja_id, NINJAS)
+                {
+                    Pos p = me.state.ninjas[ninja_id];
+                    for (int dir : result.moves[ninja_id])
+                    {
+                        p.move(dir);
+                        if (soul_set.count(p))
+                            ok = false;
+                    }
+                }
+                if (ok)
+                    break;
+            }
+            rep(i, NINJAS)
+                cout << format_moves(result.moves[i]) << endl;
+
+            prev_state.ninjas = result.ninjas;
+            prev_state.rock = result.rock;
+        }
+        cout.flush();
+    }
 }
