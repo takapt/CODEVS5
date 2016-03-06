@@ -314,7 +314,7 @@ public:
         assert((id <= 0 || id == 7) || in_field(pos_));
     }
 
-    bool is_skill() const
+    bool used() const
     {
         return id >= 0;
     }
@@ -332,7 +332,8 @@ public:
 };
 namespace Skills
 {
-const Skill FAST = Skill(0, Pos(-1, -1));
+const Skill NONE = Skill(-1);
+const Skill FAST = Skill(0);
 Skill my_rock(const Pos& p) { return Skill(1, p); }
 Skill ene_rock(const Pos& p) { return Skill(2, p); }
 Skill my_thunder(const Pos& p) { return Skill(3, p); }
@@ -354,6 +355,37 @@ public:
 #endif
     }
 
+    Action() : skill(Skills::NONE) {}
+
+    string output_format() const
+    {
+        ostringstream os;
+        if (skill.used())
+        {
+            os << 3 << endl;
+            if (skill.id == 0)
+                os << 0 << endl;
+            else if (skill.id == 7)
+                os << 7 << " " << skill.pos_.x << endl;
+            else
+            {
+                assert(1 <= skill.id && skill.id <= 6);
+                assert(in_field(skill.pos()));
+                os << skill.id << " " << skill.pos().y << " " << skill.pos().x << endl;
+            }
+        }
+        else
+            os << 2 << endl;
+
+        rep(ninja_id, NINJAS)
+        {
+            os << format_moves(moves[ninja_id]);
+            if (ninja_id < NINJAS - 1)
+                os << endl;
+        }
+        return os.str();
+    }
+
 private:
     array<vector<int>, NINJAS> moves;
     Skill skill;
@@ -373,6 +405,39 @@ ostream& operator<<(ostream& os, const Dog& dog)
 {
     os << "[" << dog.pos << ", " << dog.id << "]";
     return os;
+}
+
+Array2d<int> calc_dist(const vector<Pos>& starts, const BoolBoard& forbid)
+{
+    Array2d<int> dist(-1);
+
+    queue<Pos> q;
+    for (auto& p : starts)
+    {
+        if (!forbid.get(p))
+        {
+            q.push(p);
+            dist.set(p, 0);
+        }
+    }
+    assert(q.size() > 0);
+    while (!q.empty())
+    {
+        Pos cur = q.front();
+        q.pop();
+
+        const int nd = dist.get(cur);
+        rep(dir, 4)
+        {
+            Pos next = cur.next(dir);
+            if (in_field(next) && !forbid.get(next) && dist.get(next) == -1)
+            {
+                dist.set(next, nd);
+                q.push(next);
+            }
+        }
+    }
+    return dist;
 }
 
 struct State 
@@ -556,6 +621,7 @@ vector<Pos> simulate_sent_dogs_pos(int num_sent_dogs, const array<Pos, NINJAS>& 
     BoolBoard f = rock;
     for (auto& p : ninjas)
         f.set(p, true);
+
     // bugppoi
 //     for (auto& dog : dogs)
 //         f.set(dog.pos, true);
@@ -588,6 +654,7 @@ vector<Pos> simulate_sent_dogs_pos(int num_sent_dogs, const array<Pos, NINJAS>& 
     // bugppoi
     for (auto& dog : dogs)
         f.set(dog.pos, true);
+
     vector<tuple<int, int, int>> order;
     for (int y = 1; y < h - 1; ++y)
         for (int x = 1; x < w - 1; ++x)
@@ -699,6 +766,88 @@ InputInfo input()
     return input_info;
 }
 
+struct SimulationResult
+{
+    State state;
+    Action action;
+};
+vector<SimulationResult> simulate_next_state(const InputInfo& input_info)
+{
+    const auto& my_info = input_info.my_info;
+    const auto& my_state = my_info.state;
+
+    set<Pos> soul_set(all(my_state.souls));
+
+    auto move_results = simulate_ninja_move(my_state.ninjas, my_state.rock, my_state.dogs);
+    vector<SimulationResult> simulation_results;
+    for (auto& move_result : move_results)
+    {
+        set<Pos> got_souls;
+        rep(ninja_id, NINJAS)
+        {
+            Pos p = my_state.ninjas[ninja_id];
+            for (int dir : move_result.moves[ninja_id])
+            {
+                p.move(dir);
+                if (soul_set.count(p))
+                    got_souls.insert(p);
+            }
+            assert(p == move_result.ninjas[ninja_id]);
+        }
+
+        auto dogs = simulate_dog_move(my_state.dogs, move_result.ninjas, move_result.rock);
+        bool dead = false;
+        rep(ninja_id, NINJAS)
+        {
+            for (auto& dog : dogs)
+            {
+                if (dog.pos == move_result.ninjas[ninja_id])
+                {
+                    dead = true;
+                    goto END;
+                }
+            }
+        }
+END:
+        if (!dead)
+        {
+            vector<Pos> rem_souls;
+            for (auto& p : my_state.souls)
+                if (!got_souls.count(p))
+                    rem_souls.push_back(p);
+
+            State nstate;
+            nstate.mp = my_state.mp + got_souls.size();
+            nstate.ninjas = move_result.ninjas;
+            nstate.rock = move_result.rock;
+            nstate.dogs = dogs;
+            nstate.souls = rem_souls;
+
+            Action action(move_result.moves, Skills::NONE);
+
+            simulation_results.push_back(SimulationResult{nstate, action});
+        }
+    }
+    return simulation_results;
+}
+
+double eval_state(const State& state)
+{
+    double e = 0;
+    e = state.mp;
+    e *= 1000;
+
+    rep(ninja_id, NINJAS)
+    {
+        int min_d = 810;
+        for (auto& p : state.souls)
+            upmin(min_d, p.dist(state.ninjas[ninja_id]));
+        e += (w + h) - min_d;
+    }
+
+    return e;
+}
+
 int test_simulation()
 {
     cout << "takaptAI" << endl;
@@ -710,6 +859,7 @@ int test_simulation()
 
         auto my_info = input_info.my_info;
         auto move_results = simulate_ninja_move(my_info.state.ninjas, my_info.state.rock, my_info.state.dogs);
+        dump(move_results.size());
 
         static State simu_state;
         if (g_turn > 0)
@@ -803,5 +953,27 @@ int test_simulation()
 
 int main()
 {
-    test_simulation();
+    cout << "takaptAI" << endl;
+    cout.flush();
+
+    for (g_turn = 0; ; ++g_turn)
+    {
+        InputInfo input_info = input();
+        auto simulation_results = simulate_next_state(input_info);
+
+        Action best_action;
+        double best_score = -1;
+        for (auto& result : simulation_results)
+        {
+            double score = eval_state(result.state);
+            if (score > best_score)
+            {
+                best_score = score;
+                best_action = result.action;
+            }
+        }
+
+        cout << best_action.output_format() << endl;
+        cout.flush();
+    }
 }
