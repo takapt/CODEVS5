@@ -85,6 +85,8 @@ const int w = 14;
 const int NINJAS = 2;
 const array<int, 4> DOG_DIR_ORDER{2, 3, 1, 0};
 
+int g_turn;
+
 
 bool in_rect(int x, int y)
 {
@@ -475,9 +477,13 @@ vector<Dog> simulate_dog_move(const vector<Dog>& init_dogs, const vector<Pos>& n
     queue<Pos> q;
     for (auto& p : ninjas)
     {
-        dist.set(p, 0);
-        q.push(p);
+        if (!rock.get(p))
+        {
+            dist.set(p, 0);
+            q.push(p);
+        }
     }
+    assert(q.size() > 0);
     while (!q.empty())
     {
         Pos cur = q.front();
@@ -534,7 +540,6 @@ vector<Dog> simulate_dog_move(const vector<Dog>& init_dogs, const vector<Pos>& n
             }
         }
     }
-
     return order;
 }
 vector<Dog> simulate_dog_move(const vector<Dog>& init_dogs, const array<Pos, NINJAS>& ninjas, const BoolBoard& rock)
@@ -695,7 +700,8 @@ int test_simulation()
     cout << "takaptAI" << endl;
     cout.flush();
 
-    rep(turn, 300)
+//     rep(turn, 300)
+    for (g_turn = 0; ; ++g_turn)
     {
         InputInfo input_info = input();
 
@@ -703,7 +709,7 @@ int test_simulation()
         auto move_results = simulate_ninja_move(my_info.state.ninjas, my_info.state.rock, my_info.state.dogs);
 
         static State simu_state;
-        if (turn > 0)
+        if (g_turn > 0)
         {
             set<Dog> dog_set(all(my_info.state.dogs));
             bool ok_dog = true;
@@ -711,7 +717,7 @@ int test_simulation()
                 ok_dog &= dog_set.count(dog);
             if (my_info.state.ninjas != simu_state.ninjas || my_info.state.rock != simu_state.rock || !ok_dog)
             {
-                dump(turn);
+                dump(g_turn);
                 dump(my_info.state.dogs);
                 dump(simu_state.dogs);
 //                 ofstream ng("damy_info");
@@ -724,23 +730,23 @@ int test_simulation()
         }
 
         {
+            set<Pos> soul_set(all(my_info.state.souls));
+            SimulateNinjaMoveResult result;
+            int r = rand() % move_results.size();
+            result = move_results[r];
+
             bool sha = my_info.state.mp >= input_info.skill_costs[5];
 //             sha = false;
             Pos sha_pos;
             while (sha)
             {
                 sha_pos = Pos(1 + rand() % (w - 2), 1 + rand() % (h - 2));
-                if (!my_info.state.rock.get(sha_pos))
+                if (!result.rock.get(sha_pos))
                 {
                     assert(in_field(sha_pos));
                     break;
                 }
             }
-
-            set<Pos> soul_set(all(my_info.state.souls));
-            SimulateNinjaMoveResult result;
-            int r = rand() % move_results.size();
-            result = move_results[r];
 
             set<Pos> got_souls;
             rep(ninja_id, NINJAS)
@@ -775,6 +781,14 @@ int test_simulation()
             vector<Pos> sent_dogs_pos = simulate_sent_dogs_pos(got_souls.size(), result.ninjas, result.rock, simu_state.dogs);
             rep(i, sent_dogs_pos.size())
                 simu_state.dogs.push_back(Dog{sent_dogs_pos[i], (int)simu_state.dogs.size()});
+
+//             if (g_turn == 8)
+//             {
+//                 dump(sha_pos);
+//                 dump(result.rock.get(sha_pos));
+//                 dump(my_info.state.dogs);
+//                 dump(simu_state.dogs);
+//             }
         }
         cout.flush();
     }
