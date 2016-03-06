@@ -240,6 +240,10 @@ public:
         set(pos.x, pos.y, v);
     }
 
+    void print() const
+    {
+        print2d(a, w, h, 3);
+    }
 private:
     int a[h][16];
 };
@@ -700,7 +704,6 @@ int test_simulation()
     cout << "takaptAI" << endl;
     cout.flush();
 
-//     rep(turn, 300)
     for (g_turn = 0; ; ++g_turn)
     {
         InputInfo input_info = input();
@@ -714,7 +717,19 @@ int test_simulation()
             set<Dog> dog_set(all(my_info.state.dogs));
             bool ok_dog = true;
             for (auto& dog : simu_state.dogs)
+            {
+                if (!dog_set.count(dog))
+                {
+                    dump(dog);
+                    Dog d;
+                    for (auto& dd : my_info.state.dogs)
+                        if (dd.id == dog.id)
+                            d = dd;
+                    dump(d);
+                }
+
                 ok_dog &= dog_set.count(dog);
+            }
             if (my_info.state.ninjas != simu_state.ninjas || my_info.state.rock != simu_state.rock || !ok_dog)
             {
                 dump(g_turn);
@@ -726,7 +741,7 @@ int test_simulation()
             }
             assert(my_info.state.ninjas == simu_state.ninjas);
             assert(my_info.state.rock == simu_state.rock);
-//             assert(ok_dog);
+            assert(ok_dog);
         }
 
         {
@@ -741,7 +756,7 @@ int test_simulation()
             while (sha)
             {
                 sha_pos = Pos(1 + rand() % (w - 2), 1 + rand() % (h - 2));
-                if (!result.rock.get(sha_pos))
+                if (!my_info.state.rock.get(sha_pos) && !result.rock.get(sha_pos))
                 {
                     assert(in_field(sha_pos));
                     break;
@@ -781,14 +796,6 @@ int test_simulation()
             vector<Pos> sent_dogs_pos = simulate_sent_dogs_pos(got_souls.size(), result.ninjas, result.rock, simu_state.dogs);
             rep(i, sent_dogs_pos.size())
                 simu_state.dogs.push_back(Dog{sent_dogs_pos[i], (int)simu_state.dogs.size()});
-
-//             if (g_turn == 8)
-//             {
-//                 dump(sha_pos);
-//                 dump(result.rock.get(sha_pos));
-//                 dump(my_info.state.dogs);
-//                 dump(simu_state.dogs);
-//             }
         }
         cout.flush();
     }
