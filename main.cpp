@@ -678,6 +678,20 @@ vector<Pos> simulate_sent_dogs_pos(int num_sent_dogs, const array<Pos, NINJAS>& 
     return sent_dogs;
 }
 
+vector<Dog> simulate_sent_dogs(int num_sent_dogs, const array<Pos, NINJAS>& ninjas, const BoolBoard& rock, const vector<Dog>& dogs)
+{
+    auto pos = simulate_sent_dogs_pos(num_sent_dogs, ninjas, rock, dogs);
+
+    int max_id = 0;
+    for (auto& dog : dogs)
+        upmax(max_id, dog.id);
+
+    vector<Dog> sent_dogs;
+    rep(i, pos.size())
+        sent_dogs.push_back(Dog{pos[i], max_id + (i + 1)});
+    return sent_dogs;
+}
+
 struct PlayerInfo
 {
     State state;
@@ -866,8 +880,24 @@ vector<T> subtract(const vector<T>& a, const vector<T>& b)
     return aa;
 }
 
+vector<int> predict_ene_num_sent_dogs(const State& state)
+{
+    // とりあえず1ターンだけ
+    vector<int> sent_dogs(333);
+    auto results = simulate_next_state(state);
+    for (auto& result : results)
+    {
+        int got_souls = (int)state.souls.size() - (int)result.state.souls.size();
+        assert(got_souls >= 0);
+        upmax(sent_dogs[0], got_souls);
+    }
+    return sent_dogs;
+}
+
 Action beam_search(const InputInfo& input_info)
 {
+    const auto predicted_num_sent_dogs = predict_ene_num_sent_dogs(input_info.enemy_info.state);
+
     struct SearchState
     {
         State state;
@@ -991,6 +1021,13 @@ Action beam_search(const InputInfo& input_info)
             calc_rock_attack_risk(0, input_info.my_info.state, result)
         };
         assert(search_state.got_souls >= 0);
+
+        if (predicted_num_sent_dogs[0] > 0)
+        {
+            auto sent_dogs = simulate_sent_dogs(predicted_num_sent_dogs[0],
+                    result.state.ninjas, result.state.rock, result.state.dogs);
+            search_state.state.dogs.insert(search_state.state.dogs.end(), all(sent_dogs));
+        }
 
         search_state.score = eval(0, input_info.my_info.state, search_state, result);
 
