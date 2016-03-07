@@ -250,6 +250,60 @@ private:
     int a[h][16];
 };
 
+// class BoolBoard
+// {
+// public:
+//     BoolBoard() : f{}
+//     {
+//     }
+//
+//     bool get(int x, int y) const
+//     {
+//         assert(in_field(x, y));
+//         return f[y][x];
+//     }
+//     bool get(const Pos& p) const
+//     {
+//         return get(p.x, p.y);
+//     }
+//
+//     void set(int x, int y, bool v)
+//     {
+//         assert(in_field(x, y));
+//         f[y][x] = v;
+//     }
+//     void set(const Pos& pos, bool v)
+//     {
+//         set(pos.x, pos.y, v);
+//     }
+//
+//     bool operator<(const BoolBoard& other) const
+//     {
+//         for (int y = 1; y < h - 1; ++y)
+//             for (int x = 1; x < w - 1; ++x)
+//                 if (get(x, y) != other.get(x, y))
+//                     return get(x, y) < other.get(x, y);
+//         return false;
+//     }
+//
+//     bool operator==(const BoolBoard& other) const
+//     {
+//         for (int y = 1; y < h - 1; ++y)
+//             for (int x = 1; x < w - 1; ++x)
+//                 if (get(x, y) != other.get(x, y))
+//                     return false;
+//         return true;
+//     }
+//
+//     bool operator!=(const BoolBoard& other) const
+//     {
+//         return !(*this == other);
+//     }
+//
+// private:
+// //     bitset<80> f[80];
+//     bool f[h][16];
+// };
 class BoolBoard
 {
 public:
@@ -260,7 +314,8 @@ public:
     bool get(int x, int y) const
     {
         assert(in_field(x, y));
-        return f[y][x];
+//         return f[y][x];
+        return f[y] >> x & 1;
     }
     bool get(const Pos& p) const
     {
@@ -270,7 +325,9 @@ public:
     void set(int x, int y, bool v)
     {
         assert(in_field(x, y));
-        f[y][x] = v;
+//         f[y][x] = v;
+        const int bit = 1 << x;
+        f[y] = (f[y] & ~bit) | (v << x);
     }
     void set(const Pos& pos, bool v)
     {
@@ -280,18 +337,24 @@ public:
     bool operator<(const BoolBoard& other) const
     {
         for (int y = 1; y < h - 1; ++y)
-            for (int x = 1; x < w - 1; ++x)
-                if (get(x, y) != other.get(x, y))
-                    return get(x, y) < other.get(x, y);
+            if (f[y] != other.f[y])
+                return f[y] < other.f[y];
+//         for (int y = 1; y < h - 1; ++y)
+//             for (int x = 1; x < w - 1; ++x)
+//                 if (get(x, y) != other.get(x, y))
+//                     return get(x, y) < other.get(x, y);
         return false;
     }
 
     bool operator==(const BoolBoard& other) const
     {
         for (int y = 1; y < h - 1; ++y)
-            for (int x = 1; x < w - 1; ++x)
-                if (get(x, y) != other.get(x, y))
-                    return false;
+            if (f[y] != other.f[y])
+                return false;
+//         for (int y = 1; y < h - 1; ++y)
+//             for (int x = 1; x < w - 1; ++x)
+//                 if (get(x, y) != other.get(x, y))
+//                     return false;
         return true;
     }
 
@@ -302,7 +365,8 @@ public:
 
 private:
 //     bitset<80> f[80];
-    bool f[h][16];
+//     bool f[h][16];
+    unsigned short f[h];
 };
 
 const int SKILLS = 8;
