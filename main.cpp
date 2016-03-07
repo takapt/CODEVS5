@@ -230,7 +230,7 @@ public:
 
     T get(int x, int y) const
     {
-        assert(in_field(x, y));
+        assert(in_rect(x, y));
         return a[y][x];
     }
     T get(const Pos& p) const
@@ -240,7 +240,7 @@ public:
 
     void set(int x, int y, const T& v)
     {
-        assert(in_field(x, y));
+        assert(in_rect(x, y));
         a[y][x] = v;
     }
     void set(const Pos& pos, const T& v)
@@ -555,7 +555,19 @@ vector<Dog> simulate_dog_move(const vector<Dog>& init_dogs, const vector<Pos>& n
         return {};
 
     const int inf = 810;
-    Array2d<int> dist(inf);
+    Array2d<int> dist;
+    rep(y, h) rep(x, w)
+        dist.set(x, y, rock.get(x, y) ? -inf : inf);
+    rep(x, w)
+    {
+        dist.set(x, 0, -inf);
+        dist.set(x, h - 1, -inf);
+    }
+    rep(y, h)
+    {
+        dist.set(0, y, -inf);
+        dist.set(w - 1, y, -inf);
+    }
 
     queue<Pos> q;
     for (auto& p : ninjas)
@@ -576,7 +588,7 @@ vector<Dog> simulate_dog_move(const vector<Dog>& init_dogs, const vector<Pos>& n
         rep(dir, 4)
         {
             Pos next = cur.next(dir);
-            if (in_field(next) && !rock.get(next) && dist.get(next) == inf)
+            if (dist.get(next) == inf)
             {
                 dist.set(next, nd);
                 q.push(next);
@@ -1095,7 +1107,7 @@ Action beam_search(const InputInfo& input_info)
             {
                 best_score = search_state.score;
                 best_action = search_state.first_action;
-                dump(best_score);
+//                 dump(best_score);
             }
         }
         if (best_score > -1e18)
