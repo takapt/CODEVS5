@@ -1,4 +1,6 @@
+#ifndef NDEBUG
 #define DEBUG
+#endif
 
 #include <cstdio>
 #include <cstdlib>
@@ -455,17 +457,21 @@ struct SimulateNinjaMoveResult
     BoolBoard rock;
     array<vector<int>, NINJAS> moves;
 };
-vector<SimulateNinjaMoveResult> simulate_ninja_move(const array<Pos, NINJAS>& init_ninjas, const BoolBoard& init_rock, const vector<Dog>& dogs)
+vector<SimulateNinjaMoveResult> simulate_ninja_move(const array<Pos, NINJAS>& init_ninjas, const BoolBoard& init_rock, const vector<Dog>& dogs, const vector<Pos>& souls)
 {
     BoolBoard is_dog;
     for (auto& dog : dogs)
         is_dog.set(dog.pos, true);
 
-    using P = pair<array<Pos, NINJAS>, BoolBoard>;
+    map<Pos, int> soul_index;
+    rep(i, souls.size())
+        soul_index[souls[i]] = i;
+
+    using P = tuple<int, array<Pos, NINJAS>, BoolBoard>;
     map<P, array<vector<int>, NINJAS>> dp;
 
     vector<P> q;
-    q.push_back(make_pair(init_ninjas, init_rock));
+    q.push_back(make_tuple(0, init_ninjas, init_rock));
     dp[q.front()] = {};
     rep(ninja_id, NINJAS)
     {
@@ -474,8 +480,9 @@ vector<SimulateNinjaMoveResult> simulate_ninja_move(const array<Pos, NINJAS>& in
             vector<P> nq;
             for (const auto& key : q)
             {
-                const auto& ninjas = key.first;
-                const auto& rock = key.second;
+                const int soul_mask = get<0>(key);
+                const auto& ninjas = get<1>(key);
+                const auto& rock = get<2>(key);
                 const auto& moves = dp[key];
 
                 rep(dir, 4)
@@ -506,13 +513,16 @@ vector<SimulateNinjaMoveResult> simulate_ninja_move(const array<Pos, NINJAS>& in
                         auto nninjas = ninjas;
                         auto nrock = rock;
                         nninjas[ninja_id] = next;
+                        int nsoul_mask = soul_mask;
+                        if (soul_index.count(next))
+                            nsoul_mask |= 1 << soul_index[next];
                         if (rock.get(next))
                         {
                             nrock.set(next, false);
                             nrock.set(next.next(dir), true);
                         }
 
-                        auto nkey = make_pair(nninjas, nrock);
+                        auto nkey = make_tuple(nsoul_mask, nninjas, nrock);
                         if (!dp.count(nkey))
                         {
                             auto nmoves = moves;
@@ -530,7 +540,7 @@ vector<SimulateNinjaMoveResult> simulate_ninja_move(const array<Pos, NINJAS>& in
 
     vector<SimulateNinjaMoveResult> results;
     for (auto& it : dp)
-        results.push_back(SimulateNinjaMoveResult{it.first.first, it.first.second, it.second});
+        results.push_back(SimulateNinjaMoveResult{get<1>(it.first), get<2>(it.first), it.second});
     return results;
 }
 
@@ -771,14 +781,11 @@ struct SimulationResult
     State state;
     Action action;
 };
-vector<SimulationResult> simulate_next_state(const InputInfo& input_info)
+vector<SimulationResult> simulate_next_state(const State& my_state)
 {
-    const auto& my_info = input_info.my_info;
-    const auto& my_state = my_info.state;
-
     set<Pos> soul_set(all(my_state.souls));
 
-    auto move_results = simulate_ninja_move(my_state.ninjas, my_state.rock, my_state.dogs);
+    auto move_results = simulate_ninja_move(my_state.ninjas, my_state.rock, my_state.dogs, my_state.souls);
     vector<SimulationResult> simulation_results;
     for (auto& move_result : move_results)
     {
@@ -794,6 +801,19 @@ vector<SimulationResult> simulate_next_state(const InputInfo& input_info)
             }
             assert(p == move_result.ninjas[ninja_id]);
         }
+
+        auto check_dead_fast = [&]()
+        {
+            rep(ninja_id, NINJAS)
+            {
+                for (auto& dog : my_state.dogs)
+                    if (move_result.ninjas[ninja_id].dist(dog.pos) <= 1)
+                        return true;
+            }
+            return false;
+        };
+        if (check_dead_fast())
+            continue;
 
         auto dogs = simulate_dog_move(my_state.dogs, move_result.ninjas, move_result.rock);
         bool dead = false;
@@ -831,21 +851,135 @@ END:
     return simulation_results;
 }
 
-double eval_state(const State& state)
+template <typename T>
+vector<T> subtract(const vector<T>& a, const vector<T>& b)
 {
-    double e = 0;
-    e = state.mp;
-    e *= 1000;
+    set<T> bb(all(b));
+    vector<T> aa;
+    for (auto& t : a)
+        if (!bb.count(t))
+            aa.push_back(t);
+    assert(aa.size() + b.size() == a.size());
+    return aa;
+}
 
-    rep(ninja_id, NINJAS)
+Action beam_search(const InputInfo& input_info)
+{
+    struct SearchState
     {
-        int min_d = 810;
+        State state;
+        Action first_action;
+
+        int got_souls;
+
+        double score;
+
+        bool operator<(const SearchState& other) const
+        {
+            return score > other.score;
+        }
+    };
+    auto eval = [](const SearchState& search_state)
+    {
+        const auto& state = search_state.state;
+
+        double score = 0;
+        score = search_state.got_souls;
+        score *= 10000;
+
+        int sum_min_d = 0;
+        array<int, NINJAS> min_d;
+        fill(all(min_d), w + h);
         for (auto& p : state.souls)
-            upmin(min_d, p.dist(state.ninjas[ninja_id]));
-        e += (w + h) - min_d;
+        {
+            int a = state.ninjas[0].dist(p);
+            int b = state.ninjas[1].dist(p);
+            if (a < b)
+                upmin(min_d[0], a);
+            else
+                upmin(min_d[1], b);
+
+            sum_min_d += min(a, b);
+        }
+        rep(ninja_id, NINJAS)
+            score += 4 * ((w + h) - min_d[ninja_id]);
+        score += (w + h) * state.souls.size() - sum_min_d;
+
+        rep(ninja_id, NINJAS)
+        {
+            int min_d = 1919810;
+            for (auto& dog : state.dogs)
+                upmin(min_d, state.ninjas[ninja_id].dist(dog.pos));
+            if (min_d == 1)
+                score -= 40;
+            else if (min_d == 2)
+                score -= 5;
+        }
+
+        return score;
+    };
+
+    const int turns = 6;
+    const int beam_width = 500;
+    vector<SearchState> beams[turns + 1];
+    for (auto& result : simulate_next_state(input_info.my_info.state))
+    {
+        SearchState search_state = {
+            result.state,
+            result.action,
+
+            (int)input_info.my_info.state.souls.size() - (int)result.state.souls.size()
+        };
+        assert(search_state.got_souls >= 0);
+        search_state.score = eval(search_state);
+
+        beams[1].push_back(search_state);
     }
 
-    return e;
+    for (int turn = 1; turn < turns; ++turn)
+    {
+        auto& cur_beam = beams[turn];
+        dump(cur_beam.size());
+        sort(all(cur_beam));
+        if (cur_beam.size() > beam_width)
+            cur_beam.erase(cur_beam.begin() + beam_width, cur_beam.end());
+
+        for (auto& search_state : cur_beam)
+        {
+            auto results = simulate_next_state(search_state.state);
+            for (auto& result : results)
+            {
+                SearchState nsearch_state;
+                nsearch_state.state = result.state;
+                nsearch_state.first_action = search_state.first_action;
+
+                nsearch_state.got_souls = search_state.got_souls
+                    + ((int)search_state.state.souls.size() - (int)result.state.souls.size());
+                assert(((int)search_state.state.souls.size() - (int)result.state.souls.size()) >= 0);
+
+                nsearch_state.score = eval(nsearch_state);
+
+                beams[turn + 1].push_back(nsearch_state);
+            }
+        }
+    }
+
+    Action best_action;
+    double best_score = -1e18;
+    for (int turn = turns; turn > 0; --turn)
+    {
+        for (auto& search_state : beams[turn])
+        {
+            if (search_state.score > best_score)
+            {
+                best_score = search_state.score;
+                best_action = search_state.first_action;
+            }
+        }
+        if (best_score > -ten(9))
+            break;
+    }
+    return best_action;
 }
 
 int test_simulation()
@@ -858,7 +992,7 @@ int test_simulation()
         InputInfo input_info = input();
 
         auto my_info = input_info.my_info;
-        auto move_results = simulate_ninja_move(my_info.state.ninjas, my_info.state.rock, my_info.state.dogs);
+        auto move_results = simulate_ninja_move(my_info.state.ninjas, my_info.state.rock, my_info.state.dogs, my_info.state.souls);
         dump(move_results.size());
 
         static State simu_state;
@@ -959,19 +1093,7 @@ int main()
     for (g_turn = 0; ; ++g_turn)
     {
         InputInfo input_info = input();
-        auto simulation_results = simulate_next_state(input_info);
-
-        Action best_action;
-        double best_score = -1;
-        for (auto& result : simulation_results)
-        {
-            double score = eval_state(result.state);
-            if (score > best_score)
-            {
-                best_score = score;
-                best_action = result.action;
-            }
-        }
+        Action best_action = beam_search(input_info);
 
         cout << best_action.output_format() << endl;
         cout.flush();
