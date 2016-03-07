@@ -1,3 +1,7 @@
+#ifndef LOCAL
+#define NDEBUG
+#endif
+
 #ifndef NDEBUG
 #define DEBUG
 #endif
