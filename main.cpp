@@ -944,7 +944,7 @@ Action beam_search(const InputInfo& input_info)
 
 
         score += search_state.got_souls;
-        score *= 10000;
+        score *= 100;
 
         int sum_min_d = 0;
         array<int, NINJAS> min_d;
