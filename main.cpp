@@ -761,7 +761,10 @@ InputInfo input()
 {
     InputInfo input_info;
     if (!(cin >> input_info.ms))
-        exit(0);
+    {
+        input_info.ms = -1;
+        return input_info;
+    }
 
     int skills_;
     cin >> skills_;
@@ -1093,6 +1096,9 @@ int main()
     for (g_turn = 0; ; ++g_turn)
     {
         InputInfo input_info = input();
+        if (input_info.ms < 0)
+            break;
+
         Action best_action = beam_search(input_info);
 
         cout << best_action.output_format() << endl;
