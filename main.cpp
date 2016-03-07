@@ -554,6 +554,13 @@ vector<Dog> simulate_dog_move(const vector<Dog>& init_dogs, const vector<Pos>& n
     if (init_dogs.empty())
         return {};
 
+    BoolBoard is_dog;
+    for (auto& dog : init_dogs)
+    {
+        assert(!rock.get(dog.pos));
+        is_dog.set(dog.pos, true);
+    }
+
     const int inf = 810;
     Array2d<int> dist;
     rep(y, h) rep(x, w)
@@ -570,6 +577,7 @@ vector<Dog> simulate_dog_move(const vector<Dog>& init_dogs, const vector<Pos>& n
     }
 
     queue<Pos> q;
+    int reach = 0;
     for (auto& p : ninjas)
     {
         if (!rock.get(p))
@@ -579,7 +587,7 @@ vector<Dog> simulate_dog_move(const vector<Dog>& init_dogs, const vector<Pos>& n
         }
     }
     assert(q.size() > 0);
-    while (!q.empty())
+    while (!q.empty() && reach < init_dogs.size())
     {
         Pos cur = q.front();
         q.pop();
@@ -592,6 +600,8 @@ vector<Dog> simulate_dog_move(const vector<Dog>& init_dogs, const vector<Pos>& n
             {
                 dist.set(next, nd);
                 q.push(next);
+
+                reach += is_dog.get(next);
             }
         }
     }
@@ -603,13 +613,6 @@ vector<Dog> simulate_dog_move(const vector<Dog>& init_dogs, const vector<Pos>& n
         return ad < bd || (ad == bd && a.id < b.id);
     };
     sort(all(order), cmp);
-
-    BoolBoard is_dog;
-    for (auto& dog : order)
-    {
-        assert(!rock.get(dog.pos));
-        is_dog.set(dog.pos, true);
-    }
 
     for (auto& dog : order)
     {
