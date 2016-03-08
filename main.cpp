@@ -70,6 +70,37 @@ typedef long long ll;
 typedef pair<int, int> pint;
 typedef unsigned long long ull;
 
+
+
+
+#ifdef _MSC_VER
+#include <Windows.h>
+    double get_ms() { return (double)GetTickCount64() / 1000; }
+#else
+#include <sys/time.h>
+    double get_ms() { struct timeval t; gettimeofday(&t, NULL); return (double)t.tv_sec * 1000 + (double)t.tv_usec / 1000; }
+#endif
+
+class Timer
+{
+private:
+    double start_time;
+    double elapsed;
+
+#ifdef USE_RDTSC
+    double get_sec() { return get_absolute_sec(); }
+#else
+    double get_sec() { return get_ms() / 1000; }
+#endif
+
+public:
+    Timer() {}
+
+    void start() { start_time = get_sec(); }
+    double get_elapsed() { return elapsed = get_sec() - start_time; }
+};
+
+
 const int DX[] = { +0, +1, +0, -1 };
 const int DY[] = { +1, +0, -1, +0 };
 const char* S_DIR = "DRUL";
@@ -432,7 +463,7 @@ Array2d<int> calc_dist(const vector<Pos>& starts, const BoolBoard& forbid)
         Pos cur = q.front();
         q.pop();
 
-        const int nd = dist.get(cur);
+        const int nd = dist.get(cur) + 1;
         rep(dir, 4)
         {
             Pos next = cur.next(dir);
@@ -908,7 +939,29 @@ vector<SimulationResult> simulate_next_state(const State& my_state)
     }
     return simulation_results;
 }
+void print(const BoolBoard& rock, const vector<Dog>& dogs)
+{
+    bool is_dog[h][w]{};
+    for (auto& d : dogs)
+        is_dog[d.pos.y][d.pos.x] = true;
 
+    string s[h];
+    rep(y, h)
+    {
+        rep(x, w)
+        {
+            if (y == 0 || y == h - 1 || x == 0 || x == w - 1)
+                s[y] += 'W';
+            else if (rock.get(x, y))
+                s[y] += 'O';
+            else if (is_dog[y][x])
+                s[y] += 'd';
+            else
+                s[y] += '_';
+        }
+        cerr << s[y] << endl;
+    }
+}
 vector<SimulationResult> simulate_next_state_using_shadow(const State& my_state, int shadow_mp)
 {
     assert(my_state.mp >= shadow_mp);
@@ -1004,6 +1057,7 @@ Action beam_search(const InputInfo& input_info)
 
         int got_souls;
         int death_risk;
+        int dog_can_attack;
 
         double score;
 
@@ -1060,6 +1114,16 @@ Action beam_search(const InputInfo& input_info)
         }
         return death_risk;
     };
+    static const auto can_dog_attack = [](const array<Pos, NINJAS>& cur_ninjas, const vector<Dog>& prev_dogs)
+    {
+        rep(ninja_id, NINJAS)
+        {
+            for (auto& dog : prev_dogs)
+                if (cur_ninjas[ninja_id].dist(dog.pos) <= 1)
+                    return true;
+        }
+        return false;
+    };
 
     static const auto eval = [](const int turn, const State& prev_state, const SearchState& search_state, const SimulationResult& simulation_result)
     {
@@ -1069,8 +1133,8 @@ Action beam_search(const InputInfo& input_info)
         double score = 0;
 
         score += -search_state.death_risk;
+        score += -search_state.dog_can_attack;
         score *= 100;
-
 
         score += search_state.got_souls;
         score *= 100;
@@ -1110,7 +1174,7 @@ Action beam_search(const InputInfo& input_info)
     const int turns = 6;
     const int max_iters = 10;
     const int chokudai_width = 10;
-    const int max_use_mp = 4;
+    const int max_use_mp = 12;
     priority_queue<SearchState> beams[turns + 1][max_use_mp + 1];
     set<tuple<array<Pos, NINJAS>, BoolBoard, vector<Dog>>> visited[turns + 1];
 
@@ -1121,20 +1185,21 @@ Action beam_search(const InputInfo& input_info)
 
             0,
             0,
+            0,
 
             0
         };
         beams[0][0].push(init_state);
     }
 
+    int upto_use_mp = skill_costs[5];
     Action best_action;
     pair<int, double> best_score(0, 1e60);
     for (int iter = 0; iter < max_iters; ++iter)
     {
-        dump(iter);
         for (int turn = 0; turn < turns; ++turn)
         {
-            for (int use_mp = 0; use_mp <= max_use_mp; ++use_mp)
+            for (int use_mp = 0; use_mp <= upto_use_mp; ++use_mp)
             {
                 for (int cho = 0; cho < chokudai_width && !beams[turn][use_mp].empty(); ++cho)
                 {
@@ -1179,6 +1244,9 @@ Action beam_search(const InputInfo& input_info)
                         nsearch_state.death_risk = search_state.death_risk
                             + calc_rock_attack_risk(turn, search_state.state, result);
 
+                        nsearch_state.dog_can_attack = search_state.dog_can_attack
+                            + can_dog_attack(result.state.ninjas, search_state.state.dogs);
+
                         if (predicted_num_sent_dogs[turn] > 0)
                         {
                             auto sent_dogs = simulate_sent_dogs(predicted_num_sent_dogs[turn],
@@ -1196,6 +1264,25 @@ Action beam_search(const InputInfo& input_info)
                     }
                 }
             }
+        }
+
+        {
+            bool skip_end = false;
+            bool safe_state = false;
+            for (int use_mp = 0; use_mp <= upto_use_mp; ++use_mp)
+            {
+                if (!beams[turns][use_mp].empty() && beams[turns][use_mp].top().score > 0)
+                {
+                    safe_state = true;
+
+                    if (beams[turns][use_mp].top().score > 800)
+                        skip_end = true;
+                }
+            }
+            if (upto_use_mp + skill_costs[5] <= max_use_mp && !safe_state)
+                upto_use_mp += skill_costs[5];
+            if (skip_end)
+                break;
         }
     }
 
