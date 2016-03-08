@@ -909,12 +909,12 @@ vector<SimulationResult> simulate_next_state(const State& my_state)
     return simulation_results;
 }
 
-vector<SimulationResult> simulate_next_state_using_shadow(const InputInfo& input_info, const vector<Pos>& my_shadow_pos)
+vector<SimulationResult> simulate_next_state_using_shadow(const State& my_state, int shadow_mp)
 {
-    const auto& my_state = input_info.my_info.state;
-
-    const int shadow_mp = input_info.skill_costs[5];
     assert(my_state.mp >= shadow_mp);
+    assert(my_state.dogs.size());
+
+    const auto my_shadow_pos = calc_my_shadow_cand_pos(my_state);
 
     set<Pos> soul_set(all(my_state.souls));
 
@@ -943,6 +943,8 @@ vector<SimulationResult> simulate_next_state_using_shadow(const InputInfo& input
         for (auto& shadow_pos : my_shadow_pos)
         {
             assert(!my_state.rock.get(shadow_pos));
+            if (move_result.rock.get(shadow_pos))
+                continue;
 
             auto dogs = simulate_dog_move(my_state.dogs, vector<Pos>{shadow_pos}, move_result.rock);
             if (!check_dead(move_result.ninjas, dogs))
@@ -1108,7 +1110,8 @@ Action beam_search(const InputInfo& input_info)
     const int turns = 6;
     const int max_iters = 10;
     const int chokudai_width = 10;
-    priority_queue<SearchState> beams[turns + 1];
+    const int max_use_mp = 4;
+    priority_queue<SearchState> beams[turns + 1][max_use_mp + 1];
     set<tuple<array<Pos, NINJAS>, BoolBoard, vector<Dog>>> visited[turns + 1];
 
     {
@@ -1121,72 +1124,88 @@ Action beam_search(const InputInfo& input_info)
 
             0
         };
-        beams[0].push(init_state);
+        beams[0][0].push(init_state);
     }
 
     Action best_action;
     pair<int, double> best_score(0, 1e60);
     for (int iter = 0; iter < max_iters; ++iter)
     {
+        dump(iter);
         for (int turn = 0; turn < turns; ++turn)
         {
-            for (int cho = 0; cho < chokudai_width && !beams[turn].empty(); ++cho)
+            for (int use_mp = 0; use_mp <= max_use_mp; ++use_mp)
             {
-                auto search_state = beams[turn].top();
-                beams[turn].pop();
-
+                for (int cho = 0; cho < chokudai_width && !beams[turn][use_mp].empty(); ++cho)
                 {
-                    auto key = make_tuple(search_state.state.ninjas, search_state.state.rock, search_state.state.dogs);
-                    if (visited[turn].count(key))
+                    auto search_state = beams[turn][use_mp].top();
+                    beams[turn][use_mp].pop();
+
                     {
-                        --cho;
-                        continue;
-                    }
-                    visited[turn].insert(key);
-                }
-
-                {
-                    auto score = make_pair(turn, search_state.score);
-                    if (score > best_score)
-                    {
-                        best_score = score;
-                        best_action = search_state.first_action;
-                    }
-                }
-
-                auto results = simulate_next_state(search_state.state);
-                for (auto& result : results)
-                {
-                    SearchState nsearch_state;
-                    nsearch_state.state = result.state;
-                    nsearch_state.first_action = turn == 0 ? result.action : search_state.first_action;
-
-                    nsearch_state.got_souls = search_state.got_souls
-                        + ((int)search_state.state.souls.size() - (int)result.state.souls.size());
-                    assert(((int)search_state.state.souls.size() - (int)result.state.souls.size()) >= 0);
-
-                    nsearch_state.death_risk = search_state.death_risk
-                        + calc_rock_attack_risk(turn, search_state.state, result);
-
-                    if (predicted_num_sent_dogs[turn] > 0)
-                    {
-                        auto sent_dogs = simulate_sent_dogs(predicted_num_sent_dogs[turn],
-                                result.state.ninjas, result.state.rock, result.state.dogs);
-                        nsearch_state.state.dogs.insert(nsearch_state.state.dogs.end(), all(sent_dogs));
+                        auto key = make_tuple(search_state.state.ninjas, search_state.state.rock, search_state.state.dogs);
+                        if (visited[turn].count(key))
+                        {
+                            --cho;
+                            continue;
+                        }
+                        visited[turn].insert(key);
                     }
 
-                    nsearch_state.score = eval(turn, search_state.state, nsearch_state, result);
+                    {
+                        auto score = make_pair(turn, search_state.score);
+                        if (score > best_score)
+                        {
+                            best_score = score;
+                            best_action = search_state.first_action;
+                        }
+                    }
 
-                    beams[turn + 1].push(nsearch_state);
+                    auto results = simulate_next_state(search_state.state);
+                    if (search_state.state.dogs.size() > 0 && use_mp + skill_costs[5] <= max_use_mp && search_state.state.mp >= skill_costs[5])
+                    {
+                        auto shadow_results = simulate_next_state_using_shadow(search_state.state, skill_costs[5]);
+                        results.insert(results.end(), all(shadow_results));
+                    }
+                    for (auto& result : results)
+                    {
+                        SearchState nsearch_state;
+                        nsearch_state.state = result.state;
+                        nsearch_state.first_action = turn == 0 ? result.action : search_state.first_action;
+
+                        nsearch_state.got_souls = search_state.got_souls
+                            + ((int)search_state.state.souls.size() - (int)result.state.souls.size());
+                        assert(((int)search_state.state.souls.size() - (int)result.state.souls.size()) >= 0);
+
+                        nsearch_state.death_risk = search_state.death_risk
+                            + calc_rock_attack_risk(turn, search_state.state, result);
+
+                        if (predicted_num_sent_dogs[turn] > 0)
+                        {
+                            auto sent_dogs = simulate_sent_dogs(predicted_num_sent_dogs[turn],
+                                    result.state.ninjas, result.state.rock, result.state.dogs);
+                            nsearch_state.state.dogs.insert(nsearch_state.state.dogs.end(), all(sent_dogs));
+                        }
+
+                        nsearch_state.score = eval(turn, search_state.state, nsearch_state, result);
+
+                        int nuse_mp = use_mp;
+                        if (result.action.skill.id >= 0)
+                            nuse_mp += skill_costs[result.action.skill.id];
+                        assert(nuse_mp <= max_use_mp);
+                        beams[turn + 1][nuse_mp].push(nsearch_state);
+                    }
                 }
             }
         }
     }
 
-    if (beams[turns].size() > 0)
+    for (int use_mp = 0; use_mp <= max_use_mp; ++use_mp)
     {
-        best_score = make_pair(turns, beams[turns].top().score);
-        best_action = beams[turns].top().first_action;
+        if (beams[turns][use_mp].size() > 0 && make_pair(turns, beams[turns][use_mp].top().score) > best_score)
+        {
+            best_score = make_pair(turns, beams[turns][use_mp].top().score);
+            best_action = beams[turns][use_mp].top().first_action;
+        }
     }
     dump(best_score);
     return best_action;
