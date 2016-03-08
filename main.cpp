@@ -812,6 +812,41 @@ InputInfo input()
     return input_info;
 }
 
+vector<Pos> calc_my_shadow_cand_pos(const State& my_state)
+{
+    BoolBoard forbid_shadow;
+    rep(y, h) rep(x, w)
+        if (my_state.rock.get(x, y))
+            forbid_shadow.set(x, y, true);
+    auto dist = calc_dist(vector<Pos>(all(my_state.ninjas)), forbid_shadow);
+    vector<pair<int, Pos>> order;
+    Pos unreach_pos(-1, -1);
+    rep(y, h) rep(x, w)
+    {
+        if (dist.get(x, y) != -1)
+            order.push_back(make_pair(dist.get(x, y), Pos(x, y)));
+        else if (dist.get(x, y) == -1 && !my_state.rock.get(x, y))
+            unreach_pos = Pos(x, y);
+    }
+    sort(rall(order));
+
+    vector<Pos> cand_pos(all(my_state.ninjas));
+    if (in_field(unreach_pos))
+        cand_pos.push_back(unreach_pos);
+    rep(i, min((int)order.size(), 2))
+        cand_pos.push_back(order[i].second);
+    return cand_pos;
+}
+
+bool check_dead(const array<Pos, NINJAS>& ninjas, const vector<Dog>& dogs)
+{
+    rep(ninja_id, NINJAS)
+        for (auto& dog : dogs)
+            if (dog.pos == ninjas[ninja_id])
+                return true;
+    return false;
+}
+
 struct SimulationResult
 {
     State state;
@@ -823,7 +858,7 @@ vector<SimulationResult> simulate_next_state(const State& my_state)
 
     auto move_results = simulate_ninja_move(my_state.ninjas, my_state.rock, my_state.dogs, my_state.souls);
     vector<SimulationResult> simulation_results;
-    for (auto& move_result : move_results)
+    for (const auto& move_result : move_results)
     {
         set<Pos> got_souls;
         rep(ninja_id, NINJAS)
@@ -852,20 +887,7 @@ vector<SimulationResult> simulate_next_state(const State& my_state)
             continue;
 
         auto dogs = simulate_dog_move(my_state.dogs, move_result.ninjas, move_result.rock);
-        bool dead = false;
-        rep(ninja_id, NINJAS)
-        {
-            for (auto& dog : dogs)
-            {
-                if (dog.pos == move_result.ninjas[ninja_id])
-                {
-                    dead = true;
-                    goto END;
-                }
-            }
-        }
-END:
-        if (!dead)
+        if (!check_dead(move_result.ninjas, dogs))
         {
             vector<Pos> rem_souls;
             for (auto& p : my_state.souls)
@@ -873,7 +895,7 @@ END:
                     rem_souls.push_back(p);
 
             State nstate;
-            nstate.mp = my_state.mp + got_souls.size();
+            nstate.mp = my_state.mp + 2 * got_souls.size();
             nstate.ninjas = move_result.ninjas;
             nstate.rock = move_result.rock;
             nstate.dogs = dogs;
@@ -882,6 +904,60 @@ END:
             Action action(move_result.moves, Skills::NONE);
 
             simulation_results.push_back(SimulationResult{nstate, action});
+        }
+    }
+    return simulation_results;
+}
+
+vector<SimulationResult> simulate_next_state_using_shadow(const InputInfo& input_info, const vector<Pos>& my_shadow_pos)
+{
+    const auto& my_state = input_info.my_info.state;
+
+    const int shadow_mp = input_info.skill_costs[5];
+    assert(my_state.mp >= shadow_mp);
+
+    set<Pos> soul_set(all(my_state.souls));
+
+    auto move_results = simulate_ninja_move(my_state.ninjas, my_state.rock, my_state.dogs, my_state.souls);
+    vector<SimulationResult> simulation_results;
+    for (const auto& move_result : move_results)
+    {
+        set<Pos> got_souls;
+        rep(ninja_id, NINJAS)
+        {
+            Pos p = my_state.ninjas[ninja_id];
+            for (int dir : move_result.moves[ninja_id])
+            {
+                p.move(dir);
+                if (soul_set.count(p))
+                    got_souls.insert(p);
+            }
+            assert(p == move_result.ninjas[ninja_id]);
+        }
+
+        vector<Pos> rem_souls;
+        for (auto& p : my_state.souls)
+            if (!got_souls.count(p))
+                rem_souls.push_back(p);
+
+        for (auto& shadow_pos : my_shadow_pos)
+        {
+            assert(!my_state.rock.get(shadow_pos));
+
+            auto dogs = simulate_dog_move(my_state.dogs, vector<Pos>{shadow_pos}, move_result.rock);
+            if (!check_dead(move_result.ninjas, dogs))
+            {
+                State nstate;
+                nstate.mp = my_state.mp + 2 * got_souls.size() - shadow_mp;
+                nstate.ninjas = move_result.ninjas;
+                nstate.rock = move_result.rock;
+                nstate.dogs = dogs;
+                nstate.souls = rem_souls;
+
+                Action action(move_result.moves, Skills::my_shadow(shadow_pos));
+
+                simulation_results.push_back(SimulationResult{nstate, action});
+            }
         }
     }
     return simulation_results;
@@ -915,6 +991,8 @@ vector<int> predict_ene_num_sent_dogs(const State& state)
 
 Action beam_search(const InputInfo& input_info)
 {
+    const auto& skill_costs = input_info.skill_costs;
+
     const auto predicted_num_sent_dogs = predict_ene_num_sent_dogs(input_info.enemy_info.state);
 
     struct SearchState
@@ -1028,39 +1106,29 @@ Action beam_search(const InputInfo& input_info)
     };
 
     const int turns = 6;
-    const int beam_width = 500;
-    const int chokudai_width = 10;
     const int max_iters = 10;
+    const int chokudai_width = 10;
     priority_queue<SearchState> beams[turns + 1];
     set<tuple<array<Pos, NINJAS>, BoolBoard, vector<Dog>>> visited[turns + 1];
-    for (auto& result : simulate_next_state(input_info.my_info.state))
+
     {
-        SearchState search_state = {
-            result.state,
-            result.action,
+        SearchState init_state = {
+            input_info.my_info.state,
+            Action(),
 
-            (int)input_info.my_info.state.souls.size() - (int)result.state.souls.size(),
-            calc_rock_attack_risk(0, input_info.my_info.state, result)
+            0,
+            0,
+
+            0
         };
-        assert(search_state.got_souls >= 0);
-
-        if (predicted_num_sent_dogs[0] > 0)
-        {
-            auto sent_dogs = simulate_sent_dogs(predicted_num_sent_dogs[0],
-                    result.state.ninjas, result.state.rock, result.state.dogs);
-            search_state.state.dogs.insert(search_state.state.dogs.end(), all(sent_dogs));
-        }
-
-        search_state.score = eval(0, input_info.my_info.state, search_state, result);
-
-        beams[1].push(search_state);
+        beams[0].push(init_state);
     }
 
     Action best_action;
-    pair<int, double> best_score(-1, -1);
+    pair<int, double> best_score(0, 1e60);
     for (int iter = 0; iter < max_iters; ++iter)
     {
-        for (int turn = 1; turn < turns; ++turn)
+        for (int turn = 0; turn < turns; ++turn)
         {
             for (int cho = 0; cho < chokudai_width && !beams[turn].empty(); ++cho)
             {
@@ -1091,7 +1159,7 @@ Action beam_search(const InputInfo& input_info)
                 {
                     SearchState nsearch_state;
                     nsearch_state.state = result.state;
-                    nsearch_state.first_action = search_state.first_action;
+                    nsearch_state.first_action = turn == 0 ? result.action : search_state.first_action;
 
                     nsearch_state.got_souls = search_state.got_souls
                         + ((int)search_state.state.souls.size() - (int)result.state.souls.size());
@@ -1099,6 +1167,13 @@ Action beam_search(const InputInfo& input_info)
 
                     nsearch_state.death_risk = search_state.death_risk
                         + calc_rock_attack_risk(turn, search_state.state, result);
+
+                    if (predicted_num_sent_dogs[turn] > 0)
+                    {
+                        auto sent_dogs = simulate_sent_dogs(predicted_num_sent_dogs[turn],
+                                result.state.ninjas, result.state.rock, result.state.dogs);
+                        nsearch_state.state.dogs.insert(nsearch_state.state.dogs.end(), all(sent_dogs));
+                    }
 
                     nsearch_state.score = eval(turn, search_state.state, nsearch_state, result);
 
