@@ -929,7 +929,7 @@ Action beam_search(const InputInfo& input_info)
 
         bool operator<(const SearchState& other) const
         {
-            return score > other.score;
+            return score < other.score;
         }
     };
 
@@ -1029,7 +1029,10 @@ Action beam_search(const InputInfo& input_info)
 
     const int turns = 6;
     const int beam_width = 500;
-    vector<SearchState> beams[turns + 1];
+    const int chokudai_width = 10;
+    const int max_iters = 10;
+    priority_queue<SearchState> beams[turns + 1];
+    set<tuple<array<Pos, NINJAS>, BoolBoard, vector<Dog>>> visited[turns + 1];
     for (auto& result : simulate_next_state(input_info.my_info.state))
     {
         SearchState search_state = {
@@ -1050,72 +1053,67 @@ Action beam_search(const InputInfo& input_info)
 
         search_state.score = eval(0, input_info.my_info.state, search_state, result);
 
-        beams[1].push_back(search_state);
-    }
-
-    for (int turn = 1; turn < turns; ++turn)
-    {
-        auto& cur_beam = beams[turn];
-//         dump(cur_beam.size());
-        sort(all(cur_beam));
-        {
-            set<tuple<array<Pos, NINJAS>, BoolBoard, vector<Dog>>> used;
-            vector<SearchState> temp_beam;
-            for (auto& search_state : cur_beam)
-            {
-                auto& s = search_state.state;
-                auto key = make_tuple(s.ninjas, s.rock, s.dogs);
-                if (!used.count(key))
-                {
-                    temp_beam.push_back(search_state);
-                    used.insert(key);
-                }
-                if (temp_beam.size() >= beam_width)
-                    break;
-            }
-            cur_beam.swap(temp_beam);
-        }
-        assert(cur_beam.size() <= beam_width);
-
-        for (auto& search_state : cur_beam)
-        {
-            auto results = simulate_next_state(search_state.state);
-            for (auto& result : results)
-            {
-                SearchState nsearch_state;
-                nsearch_state.state = result.state;
-                nsearch_state.first_action = search_state.first_action;
-
-                nsearch_state.got_souls = search_state.got_souls
-                    + ((int)search_state.state.souls.size() - (int)result.state.souls.size());
-                assert(((int)search_state.state.souls.size() - (int)result.state.souls.size()) >= 0);
-
-                nsearch_state.death_risk = search_state.death_risk
-                    + calc_rock_attack_risk(turn, search_state.state, result);
-
-                nsearch_state.score = eval(turn, search_state.state, nsearch_state, result);
-
-                beams[turn + 1].push_back(nsearch_state);
-            }
-        }
+        beams[1].push(search_state);
     }
 
     Action best_action;
-    double best_score = -1e18;
-    for (int turn = turns; turn > 0; --turn)
+    pair<int, double> best_score(-1, -1);
+    for (int iter = 0; iter < max_iters; ++iter)
     {
-        for (auto& search_state : beams[turn])
+        for (int turn = 1; turn < turns; ++turn)
         {
-            if (search_state.score > best_score)
+            for (int cho = 0; cho < chokudai_width && !beams[turn].empty(); ++cho)
             {
-                best_score = search_state.score;
-                best_action = search_state.first_action;
-//                 dump(best_score);
+                auto search_state = beams[turn].top();
+                beams[turn].pop();
+
+                {
+                    auto key = make_tuple(search_state.state.ninjas, search_state.state.rock, search_state.state.dogs);
+                    if (visited[turn].count(key))
+                    {
+                        --cho;
+                        continue;
+                    }
+                    visited[turn].insert(key);
+                }
+
+                {
+                    auto score = make_pair(turn, search_state.score);
+                    if (score > best_score)
+                    {
+                        best_score = score;
+                        best_action = search_state.first_action;
+                    }
+                }
+
+                auto results = simulate_next_state(search_state.state);
+                for (auto& result : results)
+                {
+                    SearchState nsearch_state;
+                    nsearch_state.state = result.state;
+                    nsearch_state.first_action = search_state.first_action;
+
+                    nsearch_state.got_souls = search_state.got_souls
+                        + ((int)search_state.state.souls.size() - (int)result.state.souls.size());
+                    assert(((int)search_state.state.souls.size() - (int)result.state.souls.size()) >= 0);
+
+                    nsearch_state.death_risk = search_state.death_risk
+                        + calc_rock_attack_risk(turn, search_state.state, result);
+
+                    nsearch_state.score = eval(turn, search_state.state, nsearch_state, result);
+
+                    beams[turn + 1].push(nsearch_state);
+                }
             }
         }
-        if (best_score > -1e18)
-            break;
     }
+
+    if (beams[turns].size() > 0)
+    {
+        best_score = make_pair(turns, beams[turns].top().score);
+        best_action = beams[turns].top().first_action;
+    }
+    dump(best_score);
     return best_action;
 }
 
