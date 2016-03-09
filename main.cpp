@@ -380,6 +380,17 @@ Skill my_shadow(const Pos& p) { return Skill(5, p); }
 Skill ene_shadow(const Pos& p) { return Skill(6, p); }
 Skill slash(int ninja_id) { return Skill(7, Pos(ninja_id, -1)); }
 }
+namespace SkillID
+{
+const int FAST = 0;
+const int MY_ROCK = 1;
+const int ENE_ROCK = 2;
+const int MY_THUNDER = 3;
+const int ENE_THUNDER = 4;
+const int MY_SHADOW = 5;
+const int ENE_SHADOW = 6;
+const int SLASH = 7;
+};
 
 struct Action
 {
@@ -1160,7 +1171,10 @@ Action beam_search(const InputInfo& input_info)
         double score = 0;
 
         score += -search_state.death_risk;
-        score += -search_state.dog_can_attack;
+        if (simulation_result.action.skill.id != SkillID::MY_SHADOW)
+            score += -search_state.dog_can_attack;
+        else
+            score += -search_state.dog_can_attack / 4.0;
         score *= 100;
 
         score += search_state.got_souls;
