@@ -1294,7 +1294,7 @@ Action beam_search(const InputInfo& input_info)
             best_action = beams[turns][use_mp].top().first_action;
         }
     }
-    dump(best_score);
+//     dump(best_score);
     return best_action;
 }
 
