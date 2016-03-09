@@ -1080,26 +1080,53 @@ Action beam_search(const InputInfo& input_info)
         auto ninjas = prev_state.ninjas;
         rep(ninja_id, NINJAS)
         {
+            const auto can_move = [&](const Pos& p , int dir)
+            {
+                const Pos next = p.next(dir);
+                if (!in_field(next))
+                    return false;
+
+                if (!rock.get(next))
+                    return true;
+                else
+                {
+                    Pos next2 = next.next(dir);
+                    return in_field(next2)
+                        && !rock.get(next2)
+                        && !is_dog.get(next2)
+                        && next2 != ninjas[ninja_id ^ 1];
+                }
+            };
+
             auto& p = ninjas[ninja_id];
-            for (int dir : simulation_result.action.moves[ninja_id])
+            const auto& moves = simulation_result.action.moves[ninja_id];
+            rep(move_i, moves.size())
             {
                 assert(!rock.get(p));
 
-                Pos next = p.next(dir);
-                Pos next2 = next.next(dir);
+                const int dir = moves[move_i];
+                const Pos next = p.next(dir);
+                const Pos next2 = next.next(dir);
 
-                int obs = rock.get(next)
+                const int obs = rock.get(next)
                     + (!in_field(next2) || rock.get(next2)
                       || is_dog.get(next2) || next2 == ninjas[ninja_id ^ 1]);
                 assert(obs <= 1);
                 if (obs == 1)
                 {
-                    bool death = is_dog.get(p);
-                    rep(dir, 4)
+                    Pos stop = p;
+                    for (int i = move_i + 1; i < moves.size(); ++i)
                     {
-                        Pos adj = p.next(dir);
-                        death |= is_dog.get(adj);
+                        if (can_move(stop, moves[i]))
+                        {
+                            stop.move(moves[i]);
+                            assert(in_field(stop));
+                        }
                     }
+
+                    bool death = is_dog.get(stop);
+                    rep(d, 4)
+                        death |= is_dog.get(stop.next(d));
                     if (death)
                         ++death_risk;
                 }
