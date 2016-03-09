@@ -1068,7 +1068,7 @@ Action beam_search(const InputInfo& input_info)
 
         int got_souls;
         int death_risk;
-        int dog_can_attack;
+        double dog_can_attack;
 
         double score;
 
@@ -1091,24 +1091,6 @@ Action beam_search(const InputInfo& input_info)
         auto ninjas = prev_state.ninjas;
         rep(ninja_id, NINJAS)
         {
-            const auto can_move = [&](const Pos& p , int dir)
-            {
-                const Pos next = p.next(dir);
-                if (!in_field(next))
-                    return false;
-
-                if (!rock.get(next))
-                    return true;
-                else
-                {
-                    Pos next2 = next.next(dir);
-                    return in_field(next2)
-                        && !rock.get(next2)
-                        && !is_dog.get(next2)
-                        && next2 != ninjas[ninja_id ^ 1];
-                }
-            };
-
             auto& p = ninjas[ninja_id];
             const auto& moves = simulation_result.action.moves[ninja_id];
             rep(move_i, moves.size())
@@ -1126,11 +1108,40 @@ Action beam_search(const InputInfo& input_info)
                 if (obs == 1)
                 {
                     Pos stop = p;
+                    auto temp_rock = rock;
+                    if (!temp_rock.get(next))
+                        temp_rock.set(next, true);
+                    else if (!temp_rock.get(next2))
+                        temp_rock.set(next2, true);
+                    else
+                        assert(false);
+                    const auto can_move = [&temp_rock, &is_dog, &ninjas, ninja_id](const Pos& p , int dir)
+                    {
+                        const Pos next = p.next(dir);
+                        if (!in_field(next))
+                            return false;
+
+                        if (!temp_rock.get(next))
+                            return true;
+                        else
+                        {
+                            Pos next2 = next.next(dir);
+                            return in_field(next2)
+                                && !temp_rock.get(next2)
+                                && !is_dog.get(next2)
+                                && next2 != ninjas[ninja_id ^ 1];
+                        }
+                    };
                     for (int i = move_i + 1; i < moves.size(); ++i)
                     {
                         if (can_move(stop, moves[i]))
                         {
                             stop.move(moves[i]);
+                            if (temp_rock.get(stop))
+                            {
+                                temp_rock.set(stop, false);
+                                temp_rock.set(stop.next(moves[i]), true);
+                            }
                             assert(in_field(stop));
                         }
                     }
@@ -1171,10 +1182,7 @@ Action beam_search(const InputInfo& input_info)
         double score = 0;
 
         score += -search_state.death_risk;
-        if (simulation_result.action.skill.id != SkillID::MY_SHADOW)
-            score += -search_state.dog_can_attack;
-        else
-            score += -search_state.dog_can_attack / 4.0;
+        score += -search_state.dog_can_attack;
         score *= 100;
 
         score += search_state.got_souls;
@@ -1285,8 +1293,14 @@ Action beam_search(const InputInfo& input_info)
                         nsearch_state.death_risk = search_state.death_risk
                             + calc_rock_attack_risk(turn, search_state.state, result);
 
-                        nsearch_state.dog_can_attack = search_state.dog_can_attack
-                            + can_dog_attack(result.state.ninjas, search_state.state.dogs);
+                        nsearch_state.dog_can_attack = search_state.dog_can_attack;
+                        if (can_dog_attack(result.state.ninjas, search_state.state.dogs))
+                        {
+                            if (result.action.skill.id == SkillID::MY_SHADOW)
+                                nsearch_state.dog_can_attack += 0.25;
+                            else
+                                nsearch_state.dog_can_attack += 1;
+                        }
 
                         if (predicted_num_sent_dogs[turn] > 0)
                         {
@@ -1335,7 +1349,7 @@ Action beam_search(const InputInfo& input_info)
             best_action = beams[turns][use_mp].top().first_action;
         }
     }
-//     dump(best_score);
+    dump(best_score);
     return best_action;
 }
 
