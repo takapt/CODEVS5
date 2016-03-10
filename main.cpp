@@ -640,10 +640,10 @@ vector<Dog> simulate_dog_move(const vector<Dog>& init_dogs, const vector<Pos>& n
             Pos next = cur.next(dir);
             if (dist.get(next) == inf)
             {
+                reach += is_dog.get(next);
+
                 dist.set(next, nd);
                 q.push(next);
-
-                reach += is_dog.get(next);
             }
         }
     }
@@ -854,32 +854,6 @@ InputInfo input()
     return input_info;
 }
 
-vector<Pos> calc_my_shadow_cand_pos(const State& my_state)
-{
-    BoolBoard forbid_shadow;
-    rep(y, h) rep(x, w)
-        if (my_state.rock.get(x, y))
-            forbid_shadow.set(x, y, true);
-    auto dist = calc_dist(vector<Pos>(all(my_state.ninjas)), forbid_shadow);
-    vector<pair<int, Pos>> order;
-    Pos unreach_pos(-1, -1);
-    rep(y, h) rep(x, w)
-    {
-        if (dist.get(x, y) != -1)
-            order.push_back(make_pair(dist.get(x, y), Pos(x, y)));
-        else if (dist.get(x, y) == -1 && !my_state.rock.get(x, y))
-            unreach_pos = Pos(x, y);
-    }
-    sort(rall(order));
-
-    vector<Pos> cand_pos(all(my_state.ninjas));
-    if (in_field(unreach_pos))
-        cand_pos.push_back(unreach_pos);
-    rep(i, min((int)order.size(), 2))
-        cand_pos.push_back(order[i].second);
-    return cand_pos;
-}
-
 bool check_dead(const array<Pos, NINJAS>& ninjas, const vector<Dog>& dogs)
 {
     rep(ninja_id, NINJAS)
@@ -973,12 +947,38 @@ void print(const BoolBoard& rock, const vector<Dog>& dogs)
         cerr << s[y] << endl;
     }
 }
+
+vector<Pos> think_my_shadow_cand_pos(const State& my_state)
+{
+    BoolBoard forbid_shadow;
+    rep(y, h) rep(x, w)
+        if (my_state.rock.get(x, y))
+            forbid_shadow.set(x, y, true);
+    auto dist = calc_dist(vector<Pos>(all(my_state.ninjas)), forbid_shadow);
+    vector<pair<int, Pos>> order;
+    Pos unreach_pos(-1, -1);
+    rep(y, h) rep(x, w)
+    {
+        if (dist.get(x, y) != -1)
+            order.push_back(make_pair(dist.get(x, y), Pos(x, y)));
+        else if (dist.get(x, y) == -1 && !my_state.rock.get(x, y))
+            unreach_pos = Pos(x, y);
+    }
+    sort(rall(order));
+
+    vector<Pos> cand_pos(all(my_state.ninjas));
+    if (in_field(unreach_pos))
+        cand_pos.push_back(unreach_pos);
+    rep(i, min((int)order.size(), 2))
+        cand_pos.push_back(order[i].second);
+    return cand_pos;
+}
 vector<SimulationResult> simulate_next_state_using_shadow(const State& my_state, int shadow_mp)
 {
     assert(my_state.mp >= shadow_mp);
     assert(my_state.dogs.size());
 
-    const auto my_shadow_pos = calc_my_shadow_cand_pos(my_state);
+    const auto my_shadow_pos = think_my_shadow_cand_pos(my_state);
 
     set<Pos> soul_set(all(my_state.souls));
 
@@ -1027,6 +1027,48 @@ vector<SimulationResult> simulate_next_state_using_shadow(const State& my_state,
         }
     }
     return simulation_results;
+}
+
+vector<Pos> think_my_thunder_cand_pos(const State& my_state)
+{
+    vector<Pos> cand_pos;
+    for (auto& ninja : my_state.ninjas)
+    {
+        for (int dy = -2; dy <= 2; ++dy)
+        {
+            for (int dx = -2; dx <= 2; ++dx)
+            {
+                if (abs(dx) + abs(dy) <= 2)
+                {
+                    Pos p = ninja + Pos(dx, dy);
+                    if (in_field(p) && my_state.rock.get(p))
+                        cand_pos.push_back(p);
+                }
+            }
+        }
+    }
+    uniq(cand_pos);
+    return cand_pos;
+}
+vector<SimulationResult> simulate_next_state_using_my_thunder(const State& my_state, const int my_thunder_mp)
+{
+    assert(my_state.mp >= my_thunder_mp);
+
+    vector<SimulationResult> results;
+    for (auto& thunder_pos : think_my_thunder_cand_pos(my_state))
+    {
+        assert(my_state.rock.get(thunder_pos));
+
+        auto s = my_state;
+        s.mp -= my_thunder_mp;
+        s.rock.set(thunder_pos, false);
+
+        auto ress = simulate_next_state(s);
+        for (auto& res : ress)
+            res.action.skill = Skills::my_thunder(thunder_pos);
+        results.insert(results.end(), all(ress));
+    }
+    return results;
 }
 
 template <typename T>
@@ -1090,6 +1132,9 @@ Action beam_search(const InputInfo& input_info)
         int death_risk = 0;
 
         BoolBoard rock = prev_state.rock;
+        if (simulation_result.action.skill.id == SkillID::MY_THUNDER)
+            rock.set(simulation_result.action.skill.pos(), false);
+
         auto ninjas = prev_state.ninjas;
         rep(ninja_id, NINJAS)
         {
@@ -1224,7 +1269,7 @@ Action beam_search(const InputInfo& input_info)
     const int turns = 6;
     const int max_iters = 10;
     const int chokudai_width = 5;
-    const int max_use_mp = 12;
+    const int max_use_mp = 8;
     priority_queue<SearchState> beams[turns + 1][max_use_mp + 1];
     set<tuple<array<Pos, NINJAS>, BoolBoard, vector<Dog>>> visited[turns + 1];
 
@@ -1283,6 +1328,12 @@ Action beam_search(const InputInfo& input_info)
                         auto shadow_results = simulate_next_state_using_shadow(search_state.state, skill_costs[5]);
                         results.insert(results.end(), all(shadow_results));
                     }
+                    if (use_mp + skill_costs[SkillID::MY_THUNDER] <= max_use_mp && search_state.state.mp >= skill_costs[SkillID::MY_THUNDER])
+                    {
+                        auto thunder_results = simulate_next_state_using_my_thunder(search_state.state, skill_costs[SkillID::MY_THUNDER]);
+                        results.insert(results.end(), all(thunder_results));
+                    }
+
                     for (auto& result : results)
                     {
                         SearchState nsearch_state;
@@ -1339,7 +1390,7 @@ Action beam_search(const InputInfo& input_info)
                 {
                     safe_state = true;
 
-                    if (beams[turns][use_mp].top().score > 4 * 600)
+                    if (beams[turns][use_mp].top().score > 4 * 800)
                         skip_end = true;
                 }
             }
@@ -1358,7 +1409,7 @@ Action beam_search(const InputInfo& input_info)
             best_action = beams[turns][use_mp].top().first_action;
         }
     }
-    dump(best_score);
+//     dump(best_score);
     return best_action;
 }
 
