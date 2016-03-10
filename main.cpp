@@ -1066,7 +1066,9 @@ Action beam_search(const InputInfo& input_info)
         State state;
         Action first_action;
 
-        int got_souls;
+        int diff_mp;
+        int summon_dogs;
+
         int death_risk;
         double dog_can_attack;
 
@@ -1113,8 +1115,6 @@ Action beam_search(const InputInfo& input_info)
                         temp_rock.set(next, true);
                     else if (!temp_rock.get(next2))
                         temp_rock.set(next2, true);
-                    else
-                        assert(false);
                     const auto can_move = [&temp_rock, &is_dog, &ninjas, ninja_id](const Pos& p , int dir)
                     {
                         const Pos next = p.next(dir);
@@ -1185,7 +1185,8 @@ Action beam_search(const InputInfo& input_info)
         score += -search_state.dog_can_attack;
         score *= 100;
 
-        score += search_state.got_souls;
+        score += 3 * search_state.summon_dogs;
+        score += search_state.diff_mp;
         score *= 100;
 
         int sum_min_d = 0;
@@ -1222,7 +1223,7 @@ Action beam_search(const InputInfo& input_info)
 
     const int turns = 6;
     const int max_iters = 10;
-    const int chokudai_width = 10;
+    const int chokudai_width = 5;
     const int max_use_mp = 12;
     priority_queue<SearchState> beams[turns + 1][max_use_mp + 1];
     set<tuple<array<Pos, NINJAS>, BoolBoard, vector<Dog>>> visited[turns + 1];
@@ -1233,6 +1234,8 @@ Action beam_search(const InputInfo& input_info)
             Action(),
 
             0,
+            0,
+
             0,
             0,
 
@@ -1286,9 +1289,15 @@ Action beam_search(const InputInfo& input_info)
                         nsearch_state.state = result.state;
                         nsearch_state.first_action = turn == 0 ? result.action : search_state.first_action;
 
-                        nsearch_state.got_souls = search_state.got_souls
-                            + ((int)search_state.state.souls.size() - (int)result.state.souls.size());
-                        assert(((int)search_state.state.souls.size() - (int)result.state.souls.size()) >= 0);
+                        const int got_souls = (int)search_state.state.souls.size() - (int)result.state.souls.size();
+                        assert(got_souls >= 0);
+
+                        nsearch_state.diff_mp = search_state.diff_mp;
+                        nsearch_state.diff_mp += 2 * got_souls;
+                        if (result.action.skill.used())
+                            nsearch_state.diff_mp -= skill_costs[result.action.skill.id];
+
+                        nsearch_state.summon_dogs = search_state.summon_dogs + got_souls;
 
                         nsearch_state.death_risk = search_state.death_risk
                             + calc_rock_attack_risk(turn, search_state.state, result);
@@ -1330,7 +1339,7 @@ Action beam_search(const InputInfo& input_info)
                 {
                     safe_state = true;
 
-                    if (beams[turns][use_mp].top().score > 800)
+                    if (beams[turns][use_mp].top().score > 4 * 600)
                         skip_end = true;
                 }
             }
