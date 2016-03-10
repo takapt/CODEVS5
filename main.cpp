@@ -306,7 +306,7 @@ public:
 
     void set(int x, int y, bool v)
     {
-        assert(in_field(x, y));
+        assert(in_rect(x, y));
         f[y][x] = v;
     }
     void set(const Pos& pos, bool v)
@@ -363,7 +363,11 @@ public:
         return pos_;
     }
 
-    int slash_ninja_id() const { return pos_.x; }
+    int slash_ninja_id() const
+    {
+        assert(id == 7);
+        return pos_.x;
+    }
 
     int id;
     Pos pos_;
@@ -1031,6 +1035,12 @@ vector<SimulationResult> simulate_next_state_using_shadow(const State& my_state,
 
 vector<Pos> think_my_thunder_cand_pos(const State& my_state)
 {
+    BoolBoard obs = my_state.rock;
+//     for (auto& ninja : my_state.ninjas)
+//         obs.set(ninja, true);
+//     for (auto& dog : my_state.dogs)
+//         obs.set(dog.pos, true);
+
     vector<Pos> cand_pos;
     for (auto& ninja : my_state.ninjas)
     {
@@ -1040,9 +1050,18 @@ vector<Pos> think_my_thunder_cand_pos(const State& my_state)
             {
                 if (abs(dx) + abs(dy) <= 2)
                 {
-                    Pos p = ninja + Pos(dx, dy);
+                    const Pos p = ninja + Pos(dx, dy);
                     if (in_field(p) && my_state.rock.get(p))
-                        cand_pos.push_back(p);
+                    {
+                        bool any_obs = false;
+                        rep(dir, 4)
+                        {
+                            const Pos next = p.next(dir);
+                            any_obs |= !in_field(next) || obs.get(next);
+                        }
+                        if (any_obs)
+                            cand_pos.push_back(p);
+                    }
                 }
             }
         }
@@ -1062,11 +1081,54 @@ vector<SimulationResult> simulate_next_state_using_my_thunder(const State& my_st
         auto s = my_state;
         s.mp -= my_thunder_mp;
         s.rock.set(thunder_pos, false);
+        assert(s.mp >= 0);
 
         auto ress = simulate_next_state(s);
         for (auto& res : ress)
             res.action.skill = Skills::my_thunder(thunder_pos);
         results.insert(results.end(), all(ress));
+    }
+    return results;
+}
+
+vector<SimulationResult> simulate_next_state_using_slash(const State& my_state, const int slash_mp)
+{
+    assert(my_state.mp >= slash_mp);
+
+    Array2d<int> dog_id(-1);
+    for (auto& dog : my_state.dogs)
+        dog_id.set(dog.pos, dog.id);
+
+    vector<SimulationResult> results;
+    rep(ninja_id, NINJAS)
+    {
+        set<int> killed_dog_id;
+        for (int dy = -1; dy <= 1; ++dy)
+        {
+            for (int dx = -1; dx <= 1; ++dx)
+            {
+                Pos p = my_state.ninjas[ninja_id] + Pos(dx, dy);
+                if (dog_id.get(p) != -1)
+                    killed_dog_id.insert(dog_id.get(p));
+            }
+        }
+        if (killed_dog_id.size() > 0)
+        {
+            auto s = my_state;
+            s.mp -= slash_mp;
+
+            vector<Dog> dogs;
+            for (auto& dog : my_state.dogs)
+                if (!killed_dog_id.count(dog.id))
+                    dogs.push_back(dog);
+            assert(dogs.size() + killed_dog_id.size() == my_state.dogs.size());
+            s.dogs = dogs;
+
+            auto ress = simulate_next_state(s);
+            for (auto& res : ress)
+                res.action.skill = Skills::slash(ninja_id);
+            results.insert(results.end(), all(ress));
+        }
     }
     return results;
 }
@@ -1134,6 +1196,13 @@ Action beam_search(const InputInfo& input_info)
         BoolBoard rock = prev_state.rock;
         if (simulation_result.action.skill.id == SkillID::MY_THUNDER)
             rock.set(simulation_result.action.skill.pos(), false);
+        else if (simulation_result.action.skill.id == SkillID::SLASH)
+        {
+            const int ninja_id = simulation_result.action.skill.slash_ninja_id();
+            for (int dy = -1; dy <= 1; ++dy)
+                for (int dx = -1; dx <= 1; ++dx)
+                    is_dog.set(prev_state.ninjas[ninja_id] + Pos(dx, dy), false);
+        }
 
         auto ninjas = prev_state.ninjas;
         rep(ninja_id, NINJAS)
@@ -1151,6 +1220,10 @@ Action beam_search(const InputInfo& input_info)
                 const int obs = rock.get(next)
                     + (!in_field(next2) || rock.get(next2)
                       || is_dog.get(next2) || next2 == ninjas[ninja_id ^ 1]);
+                if (obs > 1)
+                {
+                    dump(simulation_result.action.skill.id);
+                }
                 assert(obs <= 1);
                 if (obs == 1)
                 {
@@ -1230,7 +1303,7 @@ Action beam_search(const InputInfo& input_info)
         score += -search_state.dog_can_attack;
         score *= 100;
 
-        score += 3 * search_state.summon_dogs;
+        score += 5 * search_state.summon_dogs;
         score += search_state.diff_mp;
         score *= 100;
 
@@ -1269,7 +1342,7 @@ Action beam_search(const InputInfo& input_info)
     const int turns = 6;
     const int max_iters = 10;
     const int chokudai_width = 5;
-    const int max_use_mp = 8;
+    const int max_use_mp = 12;
     priority_queue<SearchState> beams[turns + 1][max_use_mp + 1];
     set<tuple<array<Pos, NINJAS>, BoolBoard, vector<Dog>>> visited[turns + 1];
 
@@ -1333,12 +1406,18 @@ Action beam_search(const InputInfo& input_info)
                         auto thunder_results = simulate_next_state_using_my_thunder(search_state.state, skill_costs[SkillID::MY_THUNDER]);
                         results.insert(results.end(), all(thunder_results));
                     }
+                    if (use_mp + skill_costs[SkillID::SLASH] <= max_use_mp && search_state.state.mp >= skill_costs[SkillID::SLASH])
+                    {
+                        auto slash_results = simulate_next_state_using_slash(search_state.state, skill_costs[SkillID::SLASH]);
+                        results.insert(results.end(), all(slash_results));
+                    }
 
                     for (auto& result : results)
                     {
                         SearchState nsearch_state;
                         nsearch_state.state = result.state;
                         nsearch_state.first_action = turn == 0 ? result.action : search_state.first_action;
+
 
                         const int got_souls = (int)search_state.state.souls.size() - (int)result.state.souls.size();
                         assert(got_souls >= 0);
@@ -1349,6 +1428,15 @@ Action beam_search(const InputInfo& input_info)
                             nsearch_state.diff_mp -= skill_costs[result.action.skill.id];
 
                         nsearch_state.summon_dogs = search_state.summon_dogs + got_souls;
+                        if (result.action.skill.id == SkillID::SLASH)
+                        {
+                            const int killed_dogs = (int)search_state.state.dogs.size() - (int)result.state.dogs.size();
+                            assert(killed_dogs > 0);
+                            nsearch_state.summon_dogs += killed_dogs;
+                        }
+                        else
+                            assert(result.state.dogs.size() == search_state.state.dogs.size());
+
 
                         nsearch_state.death_risk = search_state.death_risk
                             + calc_rock_attack_risk(turn, search_state.state, result);
