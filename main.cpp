@@ -1194,16 +1194,6 @@ Action beam_search(const InputInfo& input_info)
         int death_risk = 0;
 
         BoolBoard rock = prev_state.rock;
-        if (simulation_result.action.skill.id == SkillID::MY_THUNDER)
-            rock.set(simulation_result.action.skill.pos(), false);
-        else if (simulation_result.action.skill.id == SkillID::SLASH)
-        {
-            const int ninja_id = simulation_result.action.skill.slash_ninja_id();
-            for (int dy = -1; dy <= 1; ++dy)
-                for (int dx = -1; dx <= 1; ++dx)
-                    is_dog.set(prev_state.ninjas[ninja_id] + Pos(dx, dy), false);
-        }
-
         auto ninjas = prev_state.ninjas;
         rep(ninja_id, NINJAS)
         {
@@ -1362,14 +1352,13 @@ Action beam_search(const InputInfo& input_info)
         beams[0][0].push(init_state);
     }
 
-    int upto_use_mp = skill_costs[5];
     Action best_action;
     pair<int, double> best_score(0, 1e60);
     for (int iter = 0; iter < max_iters; ++iter)
     {
         for (int turn = 0; turn < turns; ++turn)
         {
-            for (int use_mp = 0; use_mp <= upto_use_mp; ++use_mp)
+            for (int use_mp = 0; use_mp <= max_use_mp; ++use_mp)
             {
                 for (int cho = 0; cho < chokudai_width && !beams[turn][use_mp].empty(); ++cho)
                 {
@@ -1418,6 +1407,22 @@ Action beam_search(const InputInfo& input_info)
                         nsearch_state.state = result.state;
                         nsearch_state.first_action = turn == 0 ? result.action : search_state.first_action;
 
+                        State state_before_moving = search_state.state;
+                        if (result.action.skill.id == SkillID::MY_THUNDER)
+                            state_before_moving.rock.set(result.action.skill.pos(), false);
+                        else if (result.action.skill.id == SkillID::SLASH)
+                        {
+                            const int ninja_id = result.action.skill.slash_ninja_id();
+                            const auto& ninja = search_state.state.ninjas[ninja_id];
+                            vector<Dog> ndogs;
+                            for (auto& dog : search_state.state.dogs)
+                            {
+                                Pos diff = dog.pos - ninja;
+                                if (max(abs(diff.x), abs(diff.y)) > 1)
+                                    ndogs.push_back(dog);
+                            }
+                            state_before_moving.dogs = ndogs;
+                        }
 
                         const int got_souls = (int)search_state.state.souls.size() - (int)result.state.souls.size();
                         assert(got_souls >= 0);
@@ -1439,10 +1444,10 @@ Action beam_search(const InputInfo& input_info)
 
 
                         nsearch_state.death_risk = search_state.death_risk
-                            + calc_rock_attack_risk(turn, search_state.state, result);
+                            + calc_rock_attack_risk(turn, state_before_moving, result);
 
                         nsearch_state.dog_can_attack = search_state.dog_can_attack;
-                        if (can_dog_attack(result.state.ninjas, search_state.state.dogs))
+                        if (can_dog_attack(result.state.ninjas, state_before_moving.dogs))
                         {
                             if (result.action.skill.id == SkillID::MY_SHADOW)
                                 nsearch_state.dog_can_attack += 0.25;
@@ -1471,19 +1476,14 @@ Action beam_search(const InputInfo& input_info)
 
         {
             bool skip_end = false;
-            bool safe_state = false;
-            for (int use_mp = 0; use_mp <= upto_use_mp; ++use_mp)
+            for (int use_mp = 0; use_mp <= max_use_mp; ++use_mp)
             {
                 if (!beams[turns][use_mp].empty() && beams[turns][use_mp].top().score > 0)
                 {
-                    safe_state = true;
-
                     if (beams[turns][use_mp].top().score > 4 * 800)
                         skip_end = true;
                 }
             }
-            if (upto_use_mp + skill_costs[5] <= max_use_mp && !safe_state)
-                upto_use_mp += skill_costs[5];
             if (skip_end)
                 break;
         }
