@@ -1486,24 +1486,22 @@ Action beam_search(const InputInfo& input_info)
             }
         }
 
-//         {
-//             bool skip_end = false;
-//             bool safe_state = false;
-//             for (int use_mp = 0; use_mp <= upto_use_mp; ++use_mp)
-//             {
-//                 if (!beams[turns][use_mp].empty() && beams[turns][use_mp].top().score > 0)
-//                 {
-//                     safe_state = true;
-//
-//                     if (beams[turns][use_mp].top().score > 4 * 800)
-//                         skip_end = true;
-//                 }
-//             }
-//             if (upto_use_mp + skill_costs[5] <= max_use_mp && !safe_state)
-//                 upto_use_mp += skill_costs[5];
-//             if (skip_end)
-//                 break;
-//         }
+        {
+            bool skip_end = false;
+            rep(lowers_mp_diff_i, NUM_LOWERS)
+            {
+                if (!beams[turns][lowers_mp_diff_i].empty() && beams[turns][lowers_mp_diff_i].top().score > 0)
+                {
+                    if (beams[turns][lowers_mp_diff_i].top().score > 4 * 800)
+                        skip_end = true;
+                }
+            }
+            if (skip_end)
+            {
+                dump(iter);
+                break;
+            }
+        }
     }
 
     rep(lowers_mp_diff_i, NUM_LOWERS)
