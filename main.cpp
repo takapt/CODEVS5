@@ -1329,11 +1329,17 @@ Action beam_search(const InputInfo& input_info)
         return score;
     };
 
+    const int NUM_LOWERS = 4;
+    const array<int, NUM_LOWERS> lowers_mp_diff = {
+        0,
+        -skill_costs[skill_costs[SkillID::MY_SHADOW]],
+        min(-4 * skill_costs[SkillID::MY_SHADOW], -2 * skill_costs[SkillID::SLASH]),
+        -1919810
+    };
     const int turns = 6;
-    const int max_iters = 10;
+    const int max_iters = 5;
     const int chokudai_width = 5;
-    const int max_use_mp = 12;
-    priority_queue<SearchState> beams[turns + 1][max_use_mp + 1];
+    priority_queue<SearchState> beams[turns + 1][NUM_LOWERS];
     set<tuple<array<Pos, NINJAS>, BoolBoard, vector<Dog>>> visited[turns + 1];
 
     {
@@ -1358,12 +1364,12 @@ Action beam_search(const InputInfo& input_info)
     {
         for (int turn = 0; turn < turns; ++turn)
         {
-            for (int use_mp = 0; use_mp <= max_use_mp; ++use_mp)
+            rep(lowers_mp_diff_i, NUM_LOWERS)
             {
-                for (int cho = 0; cho < chokudai_width && !beams[turn][use_mp].empty(); ++cho)
+                for (int cho = 0; cho < chokudai_width && !beams[turn][lowers_mp_diff_i].empty(); ++cho)
                 {
-                    auto search_state = beams[turn][use_mp].top();
-                    beams[turn][use_mp].pop();
+                    auto search_state = beams[turn][lowers_mp_diff_i].top();
+                    beams[turn][lowers_mp_diff_i].pop();
 
                     {
                         auto key = make_tuple(search_state.state.ninjas, search_state.state.rock, search_state.state.dogs);
@@ -1385,17 +1391,17 @@ Action beam_search(const InputInfo& input_info)
                     }
 
                     auto results = simulate_next_state(search_state.state);
-                    if (search_state.state.dogs.size() > 0 && use_mp + skill_costs[5] <= max_use_mp && search_state.state.mp >= skill_costs[5])
+                    if (search_state.state.dogs.size() > 0 && search_state.state.mp >= skill_costs[5])
                     {
                         auto shadow_results = simulate_next_state_using_shadow(search_state.state, skill_costs[5]);
                         results.insert(results.end(), all(shadow_results));
                     }
-                    if (use_mp + skill_costs[SkillID::MY_THUNDER] <= max_use_mp && search_state.state.mp >= skill_costs[SkillID::MY_THUNDER])
+                    if (search_state.state.mp >= skill_costs[SkillID::MY_THUNDER])
                     {
                         auto thunder_results = simulate_next_state_using_my_thunder(search_state.state, skill_costs[SkillID::MY_THUNDER]);
                         results.insert(results.end(), all(thunder_results));
                     }
-                    if (use_mp + skill_costs[SkillID::SLASH] <= max_use_mp && search_state.state.mp >= skill_costs[SkillID::SLASH])
+                    if (search_state.state.mp >= skill_costs[SkillID::SLASH])
                     {
                         auto slash_results = simulate_next_state_using_slash(search_state.state, skill_costs[SkillID::SLASH]);
                         results.insert(results.end(), all(slash_results));
@@ -1464,37 +1470,49 @@ Action beam_search(const InputInfo& input_info)
 
                         nsearch_state.score = eval(turn, search_state.state, nsearch_state, result);
 
-                        int nuse_mp = use_mp;
-                        if (result.action.skill.id >= 0)
-                            nuse_mp += skill_costs[result.action.skill.id];
-                        assert(nuse_mp <= max_use_mp);
-                        beams[turn + 1][nuse_mp].push(nsearch_state);
+                        int nlowers_mp_diff_i = 0;
+                        while (nsearch_state.diff_mp < lowers_mp_diff[nlowers_mp_diff_i])
+                            ++nlowers_mp_diff_i;
+                        assert(nlowers_mp_diff_i < NUM_LOWERS);
+                        beams[turn + 1][nlowers_mp_diff_i].push(nsearch_state);
                     }
                 }
             }
         }
 
-        {
-            bool skip_end = false;
-            for (int use_mp = 0; use_mp <= max_use_mp; ++use_mp)
-            {
-                if (!beams[turns][use_mp].empty() && beams[turns][use_mp].top().score > 0)
-                {
-                    if (beams[turns][use_mp].top().score > 4 * 800)
-                        skip_end = true;
-                }
-            }
-            if (skip_end)
-                break;
-        }
+//         {
+//             bool skip_end = false;
+//             bool safe_state = false;
+//             for (int use_mp = 0; use_mp <= upto_use_mp; ++use_mp)
+//             {
+//                 if (!beams[turns][use_mp].empty() && beams[turns][use_mp].top().score > 0)
+//                 {
+//                     safe_state = true;
+//
+//                     if (beams[turns][use_mp].top().score > 4 * 800)
+//                         skip_end = true;
+//                 }
+//             }
+//             if (upto_use_mp + skill_costs[5] <= max_use_mp && !safe_state)
+//                 upto_use_mp += skill_costs[5];
+//             if (skip_end)
+//                 break;
+//         }
     }
 
-    for (int use_mp = 0; use_mp <= max_use_mp; ++use_mp)
+    rep(lowers_mp_diff_i, NUM_LOWERS)
     {
-        if (beams[turns][use_mp].size() > 0 && make_pair(turns, beams[turns][use_mp].top().score) > best_score)
+        if (beams[turns][lowers_mp_diff_i].size() > 0 && make_pair(turns, beams[turns][lowers_mp_diff_i].top().score) > best_score)
         {
-            best_score = make_pair(turns, beams[turns][use_mp].top().score);
-            best_action = beams[turns][use_mp].top().first_action;
+            best_score = make_pair(turns, beams[turns][lowers_mp_diff_i].top().score);
+            best_action = beams[turns][lowers_mp_diff_i].top().first_action;
+
+//             auto& ss = beams[turns][lowers_mp_diff_i].top();
+//             dump(lowers_mp_diff_i);
+//             dump(ss.score);
+//             dump(ss.diff_mp);
+//             dump(ss.summon_dogs);
+//             cerr << endl;
         }
     }
 //     dump(best_score);
