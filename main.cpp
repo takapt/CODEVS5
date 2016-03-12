@@ -1315,16 +1315,16 @@ Action beam_search(const InputInfo& input_info)
             score += 4 * ((w + h) - min_d[ninja_id]);
         score += (w + h) * state.souls.size() - sum_min_d;
 
-        rep(ninja_id, NINJAS)
-        {
-            int min_d = 1919810;
-            for (auto& dog : state.dogs)
-                upmin(min_d, state.ninjas[ninja_id].dist(dog.pos));
-            if (min_d == 1)
-                score -= 40;
-            else if (min_d == 2)
-                score -= 5;
-        }
+//         rep(ninja_id, NINJAS)
+//         {
+//             int min_d = 1919810;
+//             for (auto& dog : state.dogs)
+//                 upmin(min_d, state.ninjas[ninja_id].dist(dog.pos));
+//             if (min_d == 1)
+//                 score -= 40;
+//             else if (min_d == 2)
+//                 score -= 5;
+//         }
 
         return score;
     };
