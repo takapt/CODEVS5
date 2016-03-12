@@ -1288,19 +1288,22 @@ Action beam_search(const InputInfo& input_info)
         return false;
     };
 
-    static const auto eval = [](const int turn, const State& prev_state, const SearchState& search_state, const SimulationResult& simulation_result)
+    const auto eval = [&](const int turn, const State& prev_state, const SearchState& search_state, const SimulationResult& simulation_result)
     {
         const auto& state = search_state.state;
 
 
         double score = 0;
 
-        score += -search_state.death_risk;
-        score += -search_state.dog_can_attack;
+        score -= search_state.death_risk;
+        score -= search_state.dog_can_attack;
+        if (search_state.state.mp < skill_costs[SkillID::MY_SHADOW] * 4)
+            score -= 2;
         score *= 100;
 
         score += 5 * search_state.summon_dogs;
         score += search_state.diff_mp;
+
         score *= 100;
 
         int sum_min_d = 0;
