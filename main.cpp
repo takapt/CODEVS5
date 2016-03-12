@@ -520,14 +520,17 @@ vector<SimulateNinjaMoveResult> simulate_ninja_move(const array<Pos, NINJAS>& in
     using P = tuple<int, array<Pos, NINJAS>, BoolBoard>;
     map<P, array<vector<int>, NINJAS>> dp;
 
-    vector<P> q;
-    q.push_back(make_tuple(0, init_ninjas, init_rock));
-    dp[q.front()] = {};
+    vector<P> q, nq;
+    dp[make_tuple(0, init_ninjas, init_rock)] = {};
     rep(ninja_id, NINJAS)
     {
-        rep(moves, 2)
+        assert(q.empty());
+        for (auto& it : dp)
+            q.push_back(it.first);
+
+        rep(move_i, 2)
         {
-            vector<P> nq;
+            nq.clear();
             for (const auto& key : q)
             {
                 const int soul_mask = get<0>(key);
@@ -579,7 +582,8 @@ vector<SimulateNinjaMoveResult> simulate_ninja_move(const array<Pos, NINJAS>& in
                             nmoves[ninja_id].push_back(dir);
 
                             dp[nkey] = nmoves;
-                            nq.push_back(nkey);
+                            if (move_i < 2 - 1)
+                                nq.push_back(nkey);
                         }
                     }
                 }
@@ -906,6 +910,7 @@ vector<SimulationResult> simulate_next_state(const State& my_state)
         if (check_dead_fast())
             continue;
 
+
         auto dogs = simulate_dog_move(my_state.dogs, move_result.ninjas, move_result.rock);
         if (!check_dead(move_result.ninjas, dogs))
         {
@@ -1121,6 +1126,7 @@ vector<SimulationResult> simulate_next_state_using_slash(const State& my_state, 
             for (auto& dog : my_state.dogs)
                 if (!killed_dog_id.count(dog.id))
                     dogs.push_back(dog);
+
             assert(dogs.size() + killed_dog_id.size() == my_state.dogs.size());
             s.dogs = dogs;
 
