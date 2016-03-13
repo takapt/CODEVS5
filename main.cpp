@@ -1297,12 +1297,12 @@ Action beam_search(const InputInfo& input_info)
 
         score -= search_state.death_risk;
         score -= search_state.dog_can_attack;
-        if (search_state.state.mp < skill_costs[SkillID::MY_SHADOW] * 4)
-            score -= 2;
         score *= 100;
 
         score += 5 * search_state.summon_dogs;
         score += search_state.diff_mp;
+        if (search_state.state.mp < skill_costs[SkillID::MY_SHADOW] * 4)
+            score -= 4;
 
         score *= 100;
 
@@ -1330,9 +1330,9 @@ Action beam_search(const InputInfo& input_info)
 //             for (auto& dog : state.dogs)
 //                 upmin(min_d, state.ninjas[ninja_id].dist(dog.pos));
 //             if (min_d == 1)
-//                 score -= 40;
-//             else if (min_d == 2)
 //                 score -= 5;
+// //             else if (min_d == 2)
+// //                 score -= 5;
 //         }
 
         return score;
@@ -1346,7 +1346,7 @@ Action beam_search(const InputInfo& input_info)
         -1919810
     };
     const int turns = 6;
-    const int max_iters = 5;
+    int max_iters = 5;
     const int chokudai_width = 5;
     priority_queue<SearchState> beams[turns + 1][NUM_LOWERS];
     set<tuple<array<Pos, NINJAS>, BoolBoard, vector<Dog>>> visited[turns + 1];
@@ -1369,7 +1369,7 @@ Action beam_search(const InputInfo& input_info)
 
     Action best_action;
     pair<int, double> best_score(0, 1e60);
-    for (int iter = 0; iter < max_iters; ++iter)
+    for (int iter = 0; iter < max_iters && iter < 50; ++iter)
     {
         for (int turn = 0; turn < turns; ++turn)
         {
@@ -1465,7 +1465,7 @@ Action beam_search(const InputInfo& input_info)
                         if (can_dog_attack(result.state.ninjas, state_before_moving.dogs))
                         {
                             if (result.action.skill.id == SkillID::MY_SHADOW)
-                                nsearch_state.dog_can_attack += 0.25;
+                                nsearch_state.dog_can_attack += 0.5;
                             else
                                 nsearch_state.dog_can_attack += 1;
                         }
@@ -1490,6 +1490,7 @@ Action beam_search(const InputInfo& input_info)
         }
 
         {
+            bool all_negative = true;
             bool skip_end = false;
             rep(lowers_mp_diff_i, NUM_LOWERS)
             {
@@ -1497,11 +1498,16 @@ Action beam_search(const InputInfo& input_info)
                 {
                     if (beams[turns][lowers_mp_diff_i].top().score > 4 * 800)
                         skip_end = true;
+
+                    if (beams[turns][lowers_mp_diff_i].top().score >= 0)
+                        all_negative = false;
                 }
             }
+            if (all_negative)
+                ++max_iters;
             if (skip_end)
             {
-                dump(iter);
+//                 dump(iter);
                 break;
             }
         }
