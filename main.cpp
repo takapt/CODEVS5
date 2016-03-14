@@ -1299,7 +1299,7 @@ Action beam_search(const InputInfo& input_info)
         score -= search_state.dog_can_attack;
         score *= 100;
 
-        score += 5 * search_state.summon_dogs;
+        score += 4 * search_state.summon_dogs;
         score += search_state.diff_mp;
         if (search_state.state.mp < skill_costs[SkillID::MY_SHADOW] * 4)
             score -= 4;
@@ -1321,8 +1321,9 @@ Action beam_search(const InputInfo& input_info)
             sum_min_d += min(a, b);
         }
         rep(ninja_id, NINJAS)
-            score += 4 * ((w + h) - min_d[ninja_id]);
+            score += 6 * ((w + h) - min_d[ninja_id]);
         score += (w + h) * state.souls.size() - sum_min_d;
+        score += state.ninjas[0].dist(state.ninjas[1]);
 
 //         rep(ninja_id, NINJAS)
 //         {
