@@ -90,7 +90,7 @@ public:
         assert(back_p < SIZE);
         data[back_p++] = a;
     }
-    T front() const
+    const T& front() const
     {
         return data[front_p];
     }
@@ -700,23 +700,20 @@ vector<Dog> simulate_dog_move(const vector<Dog>& init_dogs, const vector<Pos>& n
         }
     }
 
-    vector<Dog> dogs = init_dogs;
-    vector<uint> order(dogs.size());
-    rep(i, dogs.size())
+    vector<Dog> order = init_dogs;
+    const auto cmp = [&](const Dog& a, const Dog& b)
     {
-        assert(0 <= dist.get(dogs[i].pos) && dist.get(dogs[i].pos) < 1024);
-        order[i] = (dist.get(dogs[i].pos) << 20) | (dogs[i].id << 10) | i;
-    }
-    sort(all(order));
+        const int ad = dist.get(a.pos), bd = dist.get(b.pos);
+        return ad < bd || (ad == bd && a.id < b.id);
+    };
+    sort(all(order), cmp);
 
-    for (uint packed : order)
+    for (auto& dog : order)
     {
-        const int index = packed & ((1 << 10) - 1);
-        Dog& dog = dogs[index];
         assert(is_dog.get(dog.pos));
         assert(!rock.get(dog.pos));
 
-        const Pos& p = dog.pos;
+        const Pos p = dog.pos;
         if (dist.get(p) == inf)
             continue;
 
@@ -724,6 +721,7 @@ vector<Dog> simulate_dog_move(const vector<Dog>& init_dogs, const vector<Pos>& n
         {
             const Pos next = p.next(dir);
             if (in_field(next)
+                && !rock.get(next)
                 && !is_dog.get(next)
                 && dist.get(p) == dist.get(next) + 1)
             {
@@ -734,7 +732,7 @@ vector<Dog> simulate_dog_move(const vector<Dog>& init_dogs, const vector<Pos>& n
             }
         }
     }
-    return dogs;
+    return order;
 }
 vector<Dog> simulate_dog_move(const vector<Dog>& init_dogs, const array<Pos, NINJAS>& ninjas, const BoolBoard& rock)
 {
