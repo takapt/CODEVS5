@@ -1416,7 +1416,7 @@ Action beam_search(const InputInfo& input_info)
 
     Action best_action;
     pair<int, double> best_score(0, 1e60);
-    for (int iter = 0; iter < max_iters && iter < 50; ++iter)
+    for (int iter = 0; iter < max_iters && iter < 15; ++iter)
     {
         for (int turn = 0; turn < turns; ++turn)
         {
@@ -1554,7 +1554,6 @@ Action beam_search(const InputInfo& input_info)
                 ++max_iters;
             if (skip_end)
             {
-//                 dump(iter);
                 break;
             }
         }
