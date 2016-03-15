@@ -1344,8 +1344,17 @@ vector<int> predict_ene_num_sent_dogs(const State& state)
 
 Action beam_search(const InputInfo& input_info, ShadowKillJudger& shadow_kill_judger)
 {
+    const int predicted_rem_turns = max(30, 90 - g_turn);
+#ifdef NO_TIMER
+    const double LOOSE_TL_SEC = 100000;
+    const double ABSOLUTE_TL_SEC = 100000;
+#else
+    const double LOOSE_TL_SEC = min<double>(16.0, input_info.ms / 1000.0 / predicted_rem_turns);
+    const double ABSOLUTE_TL_SEC = min<double>(LOOSE_TL_SEC, input_info.ms / 1000.0 * 0.3);
+#endif
+    Timer timer;
+    timer.start();
     const auto& skill_costs = input_info.skill_costs;
-
     const auto predicted_num_sent_dogs = predict_ene_num_sent_dogs(input_info.enemy_info.state);
 
     struct SearchState
@@ -1393,10 +1402,10 @@ Action beam_search(const InputInfo& input_info, ShadowKillJudger& shadow_kill_ju
                 const int obs = rock.get(next)
                     + (!in_field(next2) || rock.get(next2)
                       || is_dog.get(next2) || next2 == ninjas[ninja_id ^ 1]);
-                if (obs > 1)
-                {
-                    dump(simulation_result.action.skill.id);
-                }
+//                 if (obs > 1)
+//                 {
+//                     dump(simulation_result.action.skill.id);
+//                 }
                 assert(obs <= 1);
                 if (obs == 1)
                 {
@@ -1547,7 +1556,7 @@ Action beam_search(const InputInfo& input_info, ShadowKillJudger& shadow_kill_ju
 
     Action best_action;
     pair<int, double> best_score(0, 1e60);
-    for (int iter = 0; iter < max_iters && iter < 15; ++iter)
+    for (int iter = 0; iter < max_iters && iter < 20; ++iter)
     {
         for (int turn = 0; turn < turns; ++turn)
         {
@@ -1555,6 +1564,9 @@ Action beam_search(const InputInfo& input_info, ShadowKillJudger& shadow_kill_ju
             {
                 for (int cho = 0; cho < chokudai_width && !beams[turn][lowers_mp_diff_i].empty(); ++cho)
                 {
+                    if (timer.get_elapsed() > ABSOLUTE_TL_SEC)
+                        goto END;
+
                     auto search_state = beams[turn][lowers_mp_diff_i].top();
                     beams[turn][lowers_mp_diff_i].pop();
 
@@ -1683,12 +1695,13 @@ Action beam_search(const InputInfo& input_info, ShadowKillJudger& shadow_kill_ju
             }
             if (all_negative)
                 ++max_iters;
-            if (skip_end)
-            {
+            if (!all_negative && timer.get_elapsed() > LOOSE_TL_SEC)
                 break;
-            }
+            if (skip_end)
+                break;
         }
     }
+END:
 
     if (input_info.enemy_info.state.mp >= skill_costs[SkillID::ENE_SHADOW] && shadow_kill_judger.should_attack() && !beams[turns][0].empty() && input_info.my_info.state.mp >= skill_costs[SkillID::ENE_SHADOW])
     {
@@ -1716,7 +1729,7 @@ Action beam_search(const InputInfo& input_info, ShadowKillJudger& shadow_kill_ju
             best_score = make_pair(turns, beams[turns][lowers_mp_diff_i].top().score);
             best_action = beams[turns][lowers_mp_diff_i].top().first_action;
 
-//             auto& ss = beams[turns][lowers_mp_diff_i].top();
+            auto& ss = beams[turns][lowers_mp_diff_i].top();
 //             dump(lowers_mp_diff_i);
 //             dump(ss.score);
 //             dump(ss.diff_mp);
@@ -1844,6 +1857,8 @@ int main()
         if (input_info.ms < 0)
             break;
 
+        Timer timer;
+        timer.start();
         if (input_turn_log.size() > 0)
             shadow_kill_judger.add_turn_info(input_info.enemy_info, input_turn_log.back().enemy_info);
         input_turn_log.push_back(input_info);
@@ -1852,5 +1867,6 @@ int main()
 
         cout << best_action.output_format() << endl;
         cout.flush();
+        dump(timer.get_elapsed());
     }
 }
