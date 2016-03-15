@@ -1269,7 +1269,7 @@ struct ShadowKillJudger
         }
 
         Pos best_pos(-1, -1);
-        int best_score = good_results.size() * 10000 * 0.9;
+        int best_score = good_results.size() * 10000 * 0.7;
         for (auto& shadow_pos : list_attack_shadow_cand_pos(enemy_state))
         {
             auto dogs = simulate_dog_move(enemy_state.dogs, vector<Pos>{shadow_pos}, enemy_state.rock);
@@ -1280,14 +1280,16 @@ struct ShadowKillJudger
             int score = 0;
             for (auto& result : good_results)
             {
-                bool kill = false;
+//                 bool kill = false;
                 rep(ninja_id, NINJAS)
                 {
                     if (is_target_ninja[ninja_id] && is_dog.get(result.ninjas[ninja_id]))
-                        kill = true;
+                        score += 1;
+                    if (is_target_ninja[ninja_id])
+                        score += 0.5;
                 }
-                if (kill)
-                    ++score;
+//                 if (kill)
+//                     score += 1;
             }
             score *= 10000;
             for (auto& soul : got_souls)
@@ -1319,7 +1321,7 @@ struct ShadowKillJudger
 
     bool should_attack() const
     {
-        return soul_on_dog * 2 + soul_next_to_dog * 0 > 2 * attack_tries;
+        return soul_on_dog * 2 + soul_next_to_dog * 1 > 2 * attack_tries;
     }
 
     int soul_on_dog = 0;
@@ -1525,13 +1527,19 @@ Action beam_search(const InputInfo& input_info, ShadowKillJudger& shadow_kill_ju
         return score;
     };
 
-    const int NUM_LOWERS = 4;
-    const array<int, NUM_LOWERS> lowers_mp_diff = {
+//     const int NUM_LOWERS = 4;
+    vector<int> lowers_mp_diff = {
         0,
         -skill_costs[skill_costs[SkillID::MY_SHADOW]],
+        -skill_costs[skill_costs[SkillID::MY_THUNDER]],
         min(-4 * skill_costs[SkillID::MY_SHADOW], -2 * skill_costs[SkillID::SLASH]),
         -1919810
     };
+    uniq(lowers_mp_diff);
+    reverse(all(lowers_mp_diff));
+    const int MAX_NUM_LOWERS = 5;
+    const int NUM_LOWERS = lowers_mp_diff.size();
+
     const int turns = 6;
     int max_iters = 5;
     const int chokudai_width = 5;
