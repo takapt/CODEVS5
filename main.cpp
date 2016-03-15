@@ -550,6 +550,7 @@ struct SimulateNinjaMoveResult
     array<Pos, NINJAS> ninjas;
     BoolBoard rock;
     array<vector<int>, NINJAS> moves;
+    int soul_mask;
 };
 vector<SimulateNinjaMoveResult> simulate_ninja_move(const array<Pos, NINJAS>& init_ninjas, const BoolBoard& init_rock, const vector<Dog>& dogs, const vector<Pos>& souls)
 {
@@ -638,7 +639,7 @@ vector<SimulateNinjaMoveResult> simulate_ninja_move(const array<Pos, NINJAS>& in
 
     vector<SimulateNinjaMoveResult> results;
     for (auto& it : dp)
-        results.push_back(SimulateNinjaMoveResult{get<1>(it.first), get<2>(it.first), it.second});
+        results.push_back(SimulateNinjaMoveResult{get<1>(it.first), get<2>(it.first), it.second, get<0>(it.first)});
     return results;
 }
 
@@ -1195,6 +1196,138 @@ vector<T> subtract(const vector<T>& a, const vector<T>& b)
     return aa;
 }
 
+
+struct ShadowKillJudger
+{
+    void add_turn_info(const PlayerInfo& cur_info, const PlayerInfo& prev_info)
+    {
+        if (cur_info.skill_count[SkillID::MY_SHADOW] > prev_info.skill_count[SkillID::MY_SHADOW])
+        {
+            vector<Pos> got_souls;
+            for (auto& p : prev_info.state.souls)
+                if (!count(all(cur_info.state.souls), p))
+                    got_souls.push_back(p);
+
+            rep(ninja_id, NINJAS)
+            {
+                const auto& prev_ninja = prev_info.state.ninjas[ninja_id];
+                const auto& cur_ninja = cur_info.state.ninjas[ninja_id];
+                assert(prev_ninja.dist(cur_ninja) <= 2);
+
+                bool got_soul = false;
+                for (auto& soul : got_souls)
+                    got_soul |= soul.dist(prev_ninja) <= 2 && soul.dist(cur_ninja) <= 1;
+
+                if (got_soul)
+                {
+                    for (auto& prev_dog : prev_info.state.dogs)
+                    {
+                        int d = prev_dog.pos.dist(cur_ninja);
+                        if (d == 0)
+                            ++soul_on_dog;
+                        else if (d == 1)
+                            ++soul_next_to_dog;
+                    }
+                }
+            }
+        }
+//         fprintf(stderr, "%3d, %3d\n", soul_on_dog, soul_next_to_dog);
+    }
+
+    Pos search_best_pos_to_kill_risky_soul(const State& enemy_state) const
+    {
+        auto move_results = simulate_ninja_move(enemy_state.ninjas, enemy_state.rock, enemy_state.dogs, enemy_state.souls);
+
+        int max_got_souls = 0;
+        for (auto& result : move_results)
+            upmax(max_got_souls, __builtin_popcount(result.soul_mask));
+        if (max_got_souls == 0)
+                return Pos(-1, -1);
+
+        vector<SimulateNinjaMoveResult> good_results;
+        for (auto& result : move_results)
+            if (__builtin_popcount(result.soul_mask) == max_got_souls)
+                good_results.push_back(result);
+
+        int and_soul_mask = (1 << enemy_state.souls.size()) - 1;
+        for (auto& result : good_results)
+            and_soul_mask &= result.soul_mask;
+
+        bool is_target_ninja[NINJAS]{};
+        vector<Pos> got_souls;
+        rep(i, enemy_state.souls.size())
+        {
+            if (and_soul_mask >> i & 1)
+            {
+                got_souls.push_back(enemy_state.souls[i]);
+                rep(ninja_id, NINJAS)
+                {
+                    if (enemy_state.ninjas[ninja_id].dist(enemy_state.souls[i]) <= 2)
+                        is_target_ninja[ninja_id] = true;
+                }
+            }
+        }
+
+        Pos best_pos(-1, -1);
+        int best_score = good_results.size() * 10000 * 0.9;
+        for (auto& shadow_pos : list_attack_shadow_cand_pos(enemy_state))
+        {
+            auto dogs = simulate_dog_move(enemy_state.dogs, vector<Pos>{shadow_pos}, enemy_state.rock);
+            BoolBoard is_dog;
+            for (auto& dog : dogs)
+                is_dog.set(dog.pos, true);
+
+            int score = 0;
+            for (auto& result : good_results)
+            {
+                bool kill = false;
+                rep(ninja_id, NINJAS)
+                {
+                    if (is_target_ninja[ninja_id] && is_dog.get(result.ninjas[ninja_id]))
+                        kill = true;
+                }
+                if (kill)
+                    ++score;
+            }
+            score *= 10000;
+            for (auto& soul : got_souls)
+                score += (w + h) - shadow_pos.dist(soul);
+            if (score > best_score)
+            {
+                best_score = score;
+                best_pos = shadow_pos;
+            }
+        }
+        return best_pos;
+    }
+    vector<Pos> list_attack_shadow_cand_pos(const State& enemy_state) const
+    {
+        vector<Pos> cand_pos;
+        rep(y, h) rep(x, w)
+        {
+            if (in_field(x, y) && !enemy_state.rock.get(x, y))
+            {
+                int min_d = 100;
+                for (auto& p : enemy_state.ninjas)
+                    upmin(min_d, Pos(x, y).dist(p));
+                if (min_d <= 2)
+                    cand_pos.push_back(Pos(x, y));
+            }
+        }
+        return cand_pos;
+    }
+
+    bool should_attack() const
+    {
+        return soul_on_dog * 2 + soul_next_to_dog * 0 > 2 * attack_tries;
+    }
+
+    int soul_on_dog = 0;
+    int soul_next_to_dog = 0;
+
+    int attack_tries = 0;
+};
+
 vector<int> predict_ene_num_sent_dogs(const State& state)
 {
     // とりあえず1ターンだけ
@@ -1209,7 +1342,7 @@ vector<int> predict_ene_num_sent_dogs(const State& state)
     return sent_dogs;
 }
 
-Action beam_search(const InputInfo& input_info)
+Action beam_search(const InputInfo& input_info, ShadowKillJudger& shadow_kill_judger)
 {
     const auto& skill_costs = input_info.skill_costs;
 
@@ -1557,6 +1690,25 @@ Action beam_search(const InputInfo& input_info)
         }
     }
 
+    if (input_info.enemy_info.state.mp >= skill_costs[SkillID::ENE_SHADOW] && shadow_kill_judger.should_attack() && !beams[turns][0].empty() && input_info.my_info.state.mp >= skill_costs[SkillID::ENE_SHADOW])
+    {
+        auto& ss = beams[turns][0].top();
+        if (ss.score > 0
+            && !ss.first_action.skill.used()
+            && ss.state.mp - skill_costs[SkillID::ENE_SHADOW] >= 4 * skill_costs[SkillID::MY_SHADOW])
+        {
+            Pos ene_shadow_pos = shadow_kill_judger.search_best_pos_to_kill_risky_soul(input_info.enemy_info.state);
+            if (ene_shadow_pos.x != -1)
+            {
+                ++shadow_kill_judger.attack_tries;
+
+                Action action = ss.first_action;
+                action.skill = Skills::ene_shadow(ene_shadow_pos);
+                return action;
+            }
+        }
+    }
+
     rep(lowers_mp_diff_i, NUM_LOWERS)
     {
         if (beams[turns][lowers_mp_diff_i].size() > 0 && make_pair(turns, beams[turns][lowers_mp_diff_i].top().score) > best_score)
@@ -1684,13 +1836,19 @@ int main()
     cout << "takaptAI" << endl;
     cout.flush();
 
+    vector<InputInfo> input_turn_log;
+    ShadowKillJudger shadow_kill_judger;
     for (g_turn = 0; ; ++g_turn)
     {
         InputInfo input_info = input();
         if (input_info.ms < 0)
             break;
 
-        Action best_action = beam_search(input_info);
+        if (input_turn_log.size() > 0)
+            shadow_kill_judger.add_turn_info(input_info.enemy_info, input_turn_log.back().enemy_info);
+        input_turn_log.push_back(input_info);
+
+        Action best_action = beam_search(input_info, shadow_kill_judger);
 
         cout << best_action.output_format() << endl;
         cout.flush();
