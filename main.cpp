@@ -690,12 +690,13 @@ vector<Dog> simulate_dog_move(const vector<Dog>& init_dogs, const vector<Pos>& n
         const int nd = dist.get(cur) + 1;
         rep(dir, 4)
         {
-            Pos next = cur.next(dir);
-            if (dist.get(next) == inf)
+            const Pos next = cur.next(dir);
+            auto& d = dist.get(next);
+            if (d == inf)
             {
                 reach += is_dog.get(next);
 
-                dist.set(next, nd);
+                d = nd;
                 q.push(next);
             }
         }
@@ -721,9 +722,7 @@ vector<Dog> simulate_dog_move(const vector<Dog>& init_dogs, const vector<Pos>& n
         for (int dir : DOG_DIR_ORDER)
         {
             const Pos next = p.next(dir);
-            if (in_field(next)
-                && !rock.get(next)
-                && !is_dog.get(next)
+            if (!is_dog.get(next)
                 && dist.get(p) == dist.get(next) + 1)
             {
                 dog.pos = next;
@@ -1875,6 +1874,6 @@ int main()
 
         cout << best_action.output_format() << endl;
         cout.flush();
-        dump(timer.get_elapsed());
+//         dump(timer.get_elapsed());
     }
 }
