@@ -1519,6 +1519,8 @@ Action beam_search(const InputInfo& input_info, ShadowKillJudger& shadow_kill_ju
         int diff_mp;
         int summon_dogs;
 
+        int accs;
+
         int death_risk;
         double dog_can_attack;
 
@@ -1641,6 +1643,7 @@ Action beam_search(const InputInfo& input_info, ShadowKillJudger& shadow_kill_ju
 
         score += 5 * search_state.summon_dogs;
         score += search_state.diff_mp;
+        score -= 5 * search_state.accs;
         if (search_state.state.mp < skill_costs[SkillID::MY_SHADOW] * 4)
             score -= 4;
 
@@ -1705,6 +1708,8 @@ Action beam_search(const InputInfo& input_info, ShadowKillJudger& shadow_kill_ju
             Action(),
 
             0,
+            0,
+
             0,
 
             0,
@@ -1804,14 +1809,21 @@ Action beam_search(const InputInfo& input_info, ShadowKillJudger& shadow_kill_ju
                             nsearch_state.diff_mp -= skill_costs[result.action.skill.id];
 
                         nsearch_state.summon_dogs = search_state.summon_dogs + got_souls;
+
+                        nsearch_state.accs = search_state.accs;
                         if (result.action.skill.id == SkillID::SLASH)
                         {
                             const int killed_dogs = (int)search_state.state.dogs.size() - (int)result.state.dogs.size();
                             assert(killed_dogs > 0);
                             nsearch_state.summon_dogs += killed_dogs;
                         }
+                        else if (result.action.skill.id == SkillID::ACC)
+                        {
+                            ++nsearch_state.accs;
+                        }
                         else
                             assert(result.state.dogs.size() == search_state.state.dogs.size());
+
 
 
                         nsearch_state.death_risk = search_state.death_risk
