@@ -419,7 +419,7 @@ public:
 namespace Skills
 {
 const Skill NONE = Skill(-1);
-const Skill FAST = Skill(0);
+const Skill ACC = Skill(0);
 Skill my_rock(const Pos& p) { return Skill(1, p); }
 Skill ene_rock(const Pos& p) { return Skill(2, p); }
 Skill my_thunder(const Pos& p) { return Skill(3, p); }
@@ -430,7 +430,7 @@ Skill slash(int ninja_id) { return Skill(7, Pos(ninja_id, -1)); }
 }
 namespace SkillID
 {
-const int FAST = 0;
+const int ACC = 0;
 const int MY_ROCK = 1;
 const int ENE_ROCK = 2;
 const int MY_THUNDER = 3;
@@ -640,6 +640,100 @@ vector<SimulateNinjaMoveResult> simulate_ninja_move(const array<Pos, NINJAS>& in
     vector<SimulateNinjaMoveResult> results;
     for (auto& it : dp)
         results.push_back(SimulateNinjaMoveResult{get<1>(it.first), get<2>(it.first), it.second, get<0>(it.first)});
+    return results;
+}
+
+vector<SimulateNinjaMoveResult> simulate_ninja_move_using_acc(const array<Pos, NINJAS>& init_ninjas, const BoolBoard& init_rock, const vector<Dog>& dogs, const vector<Pos>& souls)
+{
+    BoolBoard is_dog;
+    for (auto& dog : dogs)
+        is_dog.set(dog.pos, true);
+
+    map<Pos, int> soul_index;
+    rep(i, souls.size())
+        soul_index[souls[i]] = i;
+
+    using P = tuple<int, array<Pos, NINJAS>, BoolBoard>;
+    map<P, array<vector<int>, NINJAS>> dp;
+
+    vector<P> q, nq;
+    dp[make_tuple(0, init_ninjas, init_rock)] = {};
+    rep(ninja_id, NINJAS)
+    {
+        assert(q.empty());
+        for (auto& it : dp)
+            q.push_back(it.first);
+
+        rep(move_i, 3)
+        {
+            nq.clear();
+            for (const auto& key : q)
+            {
+                const int soul_mask = get<0>(key);
+                const auto& ninjas = get<1>(key);
+                const auto& rock = get<2>(key);
+                const auto& moves = dp[key];
+
+                rep(dir, 4)
+                {
+                    Pos cur = ninjas[ninja_id];
+                    Pos next = cur.next(dir);
+                    assert(!rock.get(cur));
+
+                    auto can_move = [&]()
+                    {
+                        if (!in_field(next))
+                            return false;
+
+                        if (!rock.get(next))
+                            return true;
+                        else
+                        {
+                            Pos next2 = next.next(dir);
+                            return in_field(next2)
+                                && !rock.get(next2)
+                                && !is_dog.get(next2)
+                                && next2 != ninjas[ninja_id ^ 1];
+                        }
+                    };
+
+                    if (can_move())
+                    {
+                        auto nninjas = ninjas;
+                        auto nrock = rock;
+                        nninjas[ninja_id] = next;
+                        int nsoul_mask = soul_mask;
+                        if (soul_index.count(next))
+                            nsoul_mask |= 1 << soul_index[next];
+                        if (rock.get(next))
+                        {
+                            nrock.set(next, false);
+                            nrock.set(next.next(dir), true);
+                        }
+
+                        auto nkey = make_tuple(nsoul_mask, nninjas, nrock);
+                        if (!dp.count(nkey))
+                        {
+                            auto nmoves = moves;
+                            nmoves[ninja_id].push_back(dir);
+
+                            dp[nkey] = nmoves;
+                            if (move_i < 3 - 1)
+                                nq.push_back(nkey);
+                        }
+                    }
+                }
+            }
+            q.swap(nq);
+        }
+    }
+
+    vector<SimulateNinjaMoveResult> results;
+    for (auto& it : dp)
+    {
+        if (it.second[0].size() == 3 || it.second[1].size() == 3)
+            results.push_back(SimulateNinjaMoveResult{get<1>(it.first), get<2>(it.first), it.second, get<0>(it.first)});
+    }
     return results;
 }
 
@@ -977,6 +1071,65 @@ vector<SimulationResult> simulate_next_state(const State& my_state)
     }
     return simulation_results;
 }
+
+vector<SimulationResult> simulate_next_state_using_acc(const State& my_state, const int acc_cost)
+{
+    set<Pos> soul_set(all(my_state.souls));
+
+    auto move_results = simulate_ninja_move_using_acc(my_state.ninjas, my_state.rock, my_state.dogs, my_state.souls);
+    vector<SimulationResult> simulation_results;
+    for (const auto& move_result : move_results)
+    {
+        set<Pos> got_souls;
+        rep(ninja_id, NINJAS)
+        {
+            Pos p = my_state.ninjas[ninja_id];
+            for (int dir : move_result.moves[ninja_id])
+            {
+                p.move(dir);
+                if (soul_set.count(p))
+                    got_souls.insert(p);
+            }
+            assert(p == move_result.ninjas[ninja_id]);
+        }
+
+        auto check_dead_fast = [&]()
+        {
+            rep(ninja_id, NINJAS)
+            {
+                for (auto& dog : my_state.dogs)
+                    if (move_result.ninjas[ninja_id].dist(dog.pos) <= 1)
+                        return true;
+            }
+            return false;
+        };
+        if (check_dead_fast())
+            continue;
+
+
+        auto dogs = simulate_dog_move(my_state.dogs, move_result.ninjas, move_result.rock);
+        if (!check_dead(move_result.ninjas, dogs))
+        {
+            vector<Pos> rem_souls;
+            for (auto& p : my_state.souls)
+                if (!got_souls.count(p))
+                    rem_souls.push_back(p);
+
+            State nstate;
+            nstate.mp = my_state.mp + 2 * got_souls.size() - acc_cost;
+            nstate.ninjas = move_result.ninjas;
+            nstate.rock = move_result.rock;
+            nstate.dogs = dogs;
+            nstate.souls = rem_souls;
+
+            Action action(move_result.moves, Skills::ACC);
+
+            simulation_results.push_back(SimulationResult{nstate, action});
+        }
+    }
+    return simulation_results;
+}
+
 void print(const BoolBoard& rock, const vector<Dog>& dogs)
 {
     bool is_dog[h][w]{};
@@ -1486,7 +1639,7 @@ Action beam_search(const InputInfo& input_info, ShadowKillJudger& shadow_kill_ju
         score -= search_state.dog_can_attack;
         score *= 100;
 
-        score += 4 * search_state.summon_dogs;
+        score += 5 * search_state.summon_dogs;
         score += search_state.diff_mp;
         if (search_state.state.mp < skill_costs[SkillID::MY_SHADOW] * 4)
             score -= 4;
@@ -1529,14 +1682,15 @@ Action beam_search(const InputInfo& input_info, ShadowKillJudger& shadow_kill_ju
 //     const int NUM_LOWERS = 4;
     vector<int> lowers_mp_diff = {
         0,
-        -skill_costs[skill_costs[SkillID::MY_SHADOW]],
-        -skill_costs[skill_costs[SkillID::MY_THUNDER]],
+        -skill_costs[SkillID::ACC],
+        -skill_costs[SkillID::MY_SHADOW],
+        -skill_costs[SkillID::MY_THUNDER],
         min(-4 * skill_costs[SkillID::MY_SHADOW], -2 * skill_costs[SkillID::SLASH]),
         -1919810
     };
     uniq(lowers_mp_diff);
     reverse(all(lowers_mp_diff));
-    const int MAX_NUM_LOWERS = 5;
+    const int MAX_NUM_LOWERS = 6;
     const int NUM_LOWERS = lowers_mp_diff.size();
 
     const int turns = 6;
@@ -1607,10 +1761,15 @@ Action beam_search(const InputInfo& input_info, ShadowKillJudger& shadow_kill_ju
                         auto thunder_results = simulate_next_state_using_my_thunder(search_state.state, skill_costs[SkillID::MY_THUNDER]);
                         results.insert(results.end(), all(thunder_results));
                     }
-                    if (search_state.state.mp >= skill_costs[SkillID::SLASH])
+                    if (search_state.state.dogs.size() > 0 && search_state.state.mp >= skill_costs[SkillID::SLASH])
                     {
                         auto slash_results = simulate_next_state_using_slash(search_state.state, skill_costs[SkillID::SLASH]);
                         results.insert(results.end(), all(slash_results));
+                    }
+                    if (search_state.state.mp >= skill_costs[SkillID::ACC])
+                    {
+                        auto acc_results = simulate_next_state_using_acc(search_state.state, skill_costs[SkillID::ACC]);
+                        results.insert(results.end(), all(acc_results));
                     }
 
                     for (auto& result : results)
