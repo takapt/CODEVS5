@@ -1568,15 +1568,9 @@ Action beam_search(const InputInfo& input_info, ShadowKillJudger& shadow_kill_ju
                 const int obs = rock.get(next)
                     + (!in_field(next2) || rock.get(next2)
                       || is_dog.get(next2) || next2 == ninjas[ninja_id ^ 1]);
-//                 if (obs > 1)
-//                 {
-//                     dump(simulation_result.action.skill.id);
-//                 }
                 assert(obs <= 1);
                 if (obs == 1)
                 {
-                    auto any_death_risk = [&]()
-                    {
                     Pos stop = p;
                     auto temp_rock = rock;
                     if (!temp_rock.get(next))
@@ -1623,11 +1617,7 @@ Action beam_search(const InputInfo& input_info, ShadowKillJudger& shadow_kill_ju
                     bool death = is_dog.get(stop);
                     rep(d, 4)
                         death |= is_dog.get(stop.next(d));
-                    return death;
-//                     if (death)
-//                         ++death_risk;
-                    };
-                    if (any_death_risk())
+                    if (death)
                         ++death_risk;
                 }
 
