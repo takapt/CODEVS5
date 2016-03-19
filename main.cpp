@@ -1535,6 +1535,16 @@ Action beam_search(const InputInfo& input_info, ShadowKillJudger& shadow_kill_ju
         // 敵がmp足りない時どうするかは後で決める
     static const auto calc_rock_attack_risk = [](const int turn, const State& prev_state, const SimulationResult& simulation_result)
     {
+        BoolBoard forbid_rock_attack = prev_state.rock;
+        for (auto& ninja : prev_state.ninjas)
+            forbid_rock_attack.set(ninja, true);
+        for (auto& dog : prev_state.dogs)
+            forbid_rock_attack.set(dog.pos, true);
+        for (auto& soul : prev_state.souls)
+            forbid_rock_attack.set(soul, true);
+        if (simulation_result.action.skill.id == SkillID::MY_THUNDER)
+            forbid_rock_attack.set(simulation_result.action.skill.pos(), true);
+
         BoolBoard is_dog;
         for (auto& dog : prev_state.dogs)
             is_dog.set(dog.pos, true);
@@ -1565,12 +1575,20 @@ Action beam_search(const InputInfo& input_info, ShadowKillJudger& shadow_kill_ju
                 assert(obs <= 1);
                 if (obs == 1)
                 {
+                    auto any_death_risk = [&]()
+                    {
                     Pos stop = p;
                     auto temp_rock = rock;
                     if (!temp_rock.get(next))
-                        temp_rock.set(next, true);
+                    {
+                        if (!forbid_rock_attack.get(next))
+                            temp_rock.set(next, true);
+                    }
                     else if (!temp_rock.get(next2))
-                        temp_rock.set(next2, true);
+                    {
+                        if (!forbid_rock_attack.get(next2))
+                            temp_rock.set(next2, true);
+                    }
                     const auto can_move = [&temp_rock, &is_dog, &ninjas, ninja_id](const Pos& p , int dir)
                     {
                         const Pos next = p.next(dir);
@@ -1605,7 +1623,11 @@ Action beam_search(const InputInfo& input_info, ShadowKillJudger& shadow_kill_ju
                     bool death = is_dog.get(stop);
                     rep(d, 4)
                         death |= is_dog.get(stop.next(d));
-                    if (death)
+                    return death;
+//                     if (death)
+//                         ++death_risk;
+                    };
+                    if (any_death_risk())
                         ++death_risk;
                 }
 
@@ -1909,6 +1931,8 @@ END:
 
             auto& ss = beams[turns][lowers_mp_diff_i].top();
 //             dump(lowers_mp_diff_i);
+//             dump(ss.death_risk);
+//             dump(ss.dog_can_attack);
 //             dump(ss.score);
 //             dump(ss.diff_mp);
 //             dump(ss.summon_dogs);
