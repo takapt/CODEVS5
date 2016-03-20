@@ -1817,9 +1817,9 @@ Action beam_search(const InputInfo& input_info, ShadowKillJudger& shadow_kill_ju
 
     Action best_action;
     pair<int, double> best_score(0, 1e60);
-    for (int iter = 0; iter < max_iters && iter < 20; ++iter)
+    for (int iter = 0; iter < max_iters; ++iter)
     {
-        dump(iter);
+//         dump(iter);
         for (int turn = 0; turn < turns; ++turn)
         {
             rep(lowers_mp_diff_i, NUM_LOWERS)
@@ -1881,11 +1881,11 @@ Action beam_search(const InputInfo& input_info, ShadowKillJudger& shadow_kill_ju
                         auto slash_results = simulate_next_state_using_slash(search_state.state, skill_costs[SkillID::SLASH]);
                         results.insert(results.end(), all(slash_results));
                     }
-                    if (/* skill_costs[SkillID::ACC] <= 2 && */search_state.state.mp >= skill_costs[SkillID::ACC])
-                    {
-                        auto acc_results = simulate_next_state_using_acc(search_state.state, skill_costs[SkillID::ACC]);
-                        results.insert(results.end(), all(acc_results));
-                    }
+//                     if (/* skill_costs[SkillID::ACC] <= 2 && */search_state.state.mp >= skill_costs[SkillID::ACC])
+//                     {
+//                         auto acc_results = simulate_next_state_using_acc(search_state.state, skill_costs[SkillID::ACC]);
+//                         results.insert(results.end(), all(acc_results));
+//                     }
 
                     for (auto& result : results)
                     {
@@ -1931,6 +1931,7 @@ Action beam_search(const InputInfo& input_info, ShadowKillJudger& shadow_kill_ju
                         nsearch_state.summon_dogs = search_state.summon_dogs + got_souls;
 
                         nsearch_state.accs = search_state.accs;
+                        nsearch_state.thunders = search_state.thunders;
                         if (result.action.skill.id == SkillID::SLASH)
                         {
                             const int killed_dogs = (int)search_state.state.dogs.size() - (int)result.state.dogs.size();
@@ -2058,13 +2059,12 @@ END:
             best_score = make_pair(turns, search_state.score);
             best_action = search_state.first_action;
 
-//             auto& ss = beams[turns][lowers_mp_diff_i].top();
 //             dump(lowers_mp_diff_i);
-//             dump(ss.death_risk);
-//             dump(ss.dog_can_attack);
-//             dump(ss.score);
-//             dump(ss.diff_mp);
-//             dump(ss.summon_dogs);
+//             dump(search_state.death_risk);
+//             dump(search_state.dog_can_attack);
+//             dump(search_state.score);
+//             dump(search_state.diff_mp);
+//             dump(search_state.summon_dogs);
 //             cerr << endl;
         }
     }
