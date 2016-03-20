@@ -1581,6 +1581,7 @@ Action beam_search(const InputInfo& input_info, ShadowKillJudger& shadow_kill_ju
         int diff_mp;
         int summon_dogs;
 
+        int thunders;
         int accs;
 
         int death_risk;
@@ -1717,7 +1718,7 @@ Action beam_search(const InputInfo& input_info, ShadowKillJudger& shadow_kill_ju
 
         score += 5 * search_state.summon_dogs;
         score += search_state.diff_mp;
-        score -= 5 * search_state.accs;
+        score -= 3 * search_state.accs;
         if (search_state.state.mp < skill_costs[SkillID::MY_SHADOW] * 4)
             score -= 4;
 
@@ -1759,7 +1760,7 @@ Action beam_search(const InputInfo& input_info, ShadowKillJudger& shadow_kill_ju
 //     const int NUM_LOWERS = 4;
     vector<int> lowers_mp_diff = {
         0,
-        -skill_costs[SkillID::ACC],
+//         -skill_costs[SkillID::ACC],
         -skill_costs[SkillID::MY_SHADOW],
         -skill_costs[SkillID::MY_THUNDER],
 //         -2 * skill_costs[SkillID::MY_SHADOW],
@@ -1767,6 +1768,8 @@ Action beam_search(const InputInfo& input_info, ShadowKillJudger& shadow_kill_ju
         min(-4 * skill_costs[SkillID::MY_SHADOW], -2 * skill_costs[SkillID::SLASH]),
         -1919810
     };
+    if (skill_costs[SkillID::ACC] <= 2)
+        lowers_mp_diff.push_back(-skill_costs[SkillID::ACC]);
     uniq(lowers_mp_diff);
     reverse(all(lowers_mp_diff));
     const int MAX_NUM_LOWERS = 6;
@@ -1788,6 +1791,7 @@ Action beam_search(const InputInfo& input_info, ShadowKillJudger& shadow_kill_ju
             0,
 
             0,
+            0,
 
             0,
             0,
@@ -1805,7 +1809,8 @@ Action beam_search(const InputInfo& input_info, ShadowKillJudger& shadow_kill_ju
         {
             rep(lowers_mp_diff_i, NUM_LOWERS)
             {
-                for (int cho = 0; cho < chokudai_width && !beams[turn][lowers_mp_diff_i].empty(); ++cho)
+                const int cur_width = lowers_mp_diff_i == 0 ? 3 * chokudai_width : chokudai_width;
+                for (int cho = 0; cho < cur_width && !beams[turn][lowers_mp_diff_i].empty(); ++cho)
                 {
                     if (timer.get_elapsed() > ABSOLUTE_TL_SEC)
                         goto END;
@@ -1914,6 +1919,10 @@ Action beam_search(const InputInfo& input_info, ShadowKillJudger& shadow_kill_ju
                             const int killed_dogs = (int)search_state.state.dogs.size() - (int)result.state.dogs.size();
                             assert(killed_dogs > 0);
                             nsearch_state.summon_dogs += killed_dogs;
+                        }
+                        else if (result.action.skill.id == SkillID::MY_THUNDER)
+                        {
+                            ++nsearch_state.thunders;
                         }
                         else if (result.action.skill.id == SkillID::ACC)
                         {
