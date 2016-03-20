@@ -395,6 +395,7 @@ public:
         assert(-1 <= id && id < SKILLS);
         assert((id <= 0 || id == 7) || in_field(pos_));
     }
+    Skill() : id(-1) {}
 
     bool used() const
     {
@@ -552,11 +553,20 @@ struct SimulateNinjaMoveResult
     array<vector<int>, NINJAS> moves;
     int soul_mask;
 };
+template <bool USED_SHADOW = false>
 vector<SimulateNinjaMoveResult> simulate_ninja_move(const array<Pos, NINJAS>& init_ninjas, const BoolBoard& init_rock, const vector<Dog>& dogs, const vector<Pos>& souls)
 {
-    BoolBoard is_dog;
+    const int MOVES = 2;
+
+    BoolBoard is_dog, dead;
     for (auto& dog : dogs)
+    {
         is_dog.set(dog.pos, true);
+
+        dead.set(dog.pos, true);
+        rep(dir, 4)
+            dead.set(dog.pos.next(dir), true);
+    }
 
     map<Pos, int> soul_index;
     rep(i, souls.size())
@@ -573,7 +583,7 @@ vector<SimulateNinjaMoveResult> simulate_ninja_move(const array<Pos, NINJAS>& in
         for (auto& it : dp)
             q.push_back(it.first);
 
-        rep(move_i, 2)
+        rep(move_i, MOVES)
         {
             nq.clear();
             for (const auto& key : q)
@@ -585,9 +595,23 @@ vector<SimulateNinjaMoveResult> simulate_ninja_move(const array<Pos, NINJAS>& in
 
                 rep(dir, 4)
                 {
-                    Pos cur = ninjas[ninja_id];
-                    Pos next = cur.next(dir);
+                    const Pos cur = ninjas[ninja_id];
+                    const Pos next = cur.next(dir);
                     assert(!rock.get(cur));
+
+                    if (!USED_SHADOW)
+                    {
+                        if (MOVES - 1 - move_i <= 1)
+                        {
+                            if (is_dog.get(next))
+                                continue;
+                        }
+                        else if (MOVES - 1 == move_i)
+                        {
+                            if (dead.get(next))
+                                continue;
+                        }
+                    }
 
                     auto can_move = [&]()
                     {
@@ -627,7 +651,7 @@ vector<SimulateNinjaMoveResult> simulate_ninja_move(const array<Pos, NINJAS>& in
                             nmoves[ninja_id].push_back(dir);
 
                             dp[nkey] = nmoves;
-                            if (move_i < 2 - 1)
+                            if (move_i < MOVES - 1)
                                 nq.push_back(nkey);
                         }
                     }
@@ -1049,8 +1073,8 @@ vector<SimulationResult> simulate_next_state(const State& my_state)
             continue;
 
 
-        auto dogs = simulate_dog_move(my_state.dogs, move_result.ninjas, move_result.rock);
-        if (!check_dead(move_result.ninjas, dogs))
+//         auto dogs = simulate_dog_move(my_state.dogs, move_result.ninjas, move_result.rock);
+//         if (!check_dead(move_result.ninjas, dogs))
         {
             vector<Pos> rem_souls;
             for (auto& p : my_state.souls)
@@ -1061,7 +1085,8 @@ vector<SimulationResult> simulate_next_state(const State& my_state)
             nstate.mp = my_state.mp + 2 * got_souls.size();
             nstate.ninjas = move_result.ninjas;
             nstate.rock = move_result.rock;
-            nstate.dogs = dogs;
+//             nstate.dogs = dogs;
+            nstate.dogs = my_state.dogs;
             nstate.souls = rem_souls;
 
             Action action(move_result.moves, Skills::NONE);
@@ -1107,8 +1132,8 @@ vector<SimulationResult> simulate_next_state_using_acc(const State& my_state, co
             continue;
 
 
-        auto dogs = simulate_dog_move(my_state.dogs, move_result.ninjas, move_result.rock);
-        if (!check_dead(move_result.ninjas, dogs))
+//         auto dogs = simulate_dog_move(my_state.dogs, move_result.ninjas, move_result.rock);
+//         if (!check_dead(move_result.ninjas, dogs))
         {
             vector<Pos> rem_souls;
             for (auto& p : my_state.souls)
@@ -1119,7 +1144,8 @@ vector<SimulationResult> simulate_next_state_using_acc(const State& my_state, co
             nstate.mp = my_state.mp + 2 * got_souls.size() - acc_cost;
             nstate.ninjas = move_result.ninjas;
             nstate.rock = move_result.rock;
-            nstate.dogs = dogs;
+//             nstate.dogs = dogs;
+            nstate.dogs = my_state.dogs;
             nstate.souls = rem_souls;
 
             Action action(move_result.moves, Skills::ACC);
@@ -1160,23 +1186,57 @@ vector<Pos> think_my_shadow_cand_pos(const State& my_state)
     rep(y, h) rep(x, w)
         if (my_state.rock.get(x, y))
             forbid_shadow.set(x, y, true);
-    auto dist = calc_dist(vector<Pos>(all(my_state.ninjas)), forbid_shadow);
-    vector<pair<int, Pos>> order;
-    Pos unreach_pos(-1, -1);
-    rep(y, h) rep(x, w)
-    {
-        if (dist.get(x, y) != -1)
-            order.push_back(make_pair(dist.get(x, y), Pos(x, y)));
-        else if (dist.get(x, y) == -1 && !my_state.rock.get(x, y))
-            unreach_pos = Pos(x, y);
-    }
-    sort(rall(order));
-
     vector<Pos> cand_pos(all(my_state.ninjas));
+    Pos unreach_pos(-1, -1);
+    rep(_, 1)
+    {
+        auto dist = calc_dist(cand_pos, forbid_shadow);
+        int max_d = -1;
+        Pos max_pos;
+        rep(y, h) rep(x, w)
+        {
+            int d = dist.get(x, y);
+            if (!forbid_shadow.get(x, y) && d == -1)
+                unreach_pos = Pos(x, y);
+            else if (d > max_d)
+            {
+                max_d = d;
+                max_pos = Pos(x, y);
+            }
+        }
+        if (max_d == 0)
+            break;
+
+        cand_pos.push_back(max_pos);
+    }
     if (in_field(unreach_pos))
         cand_pos.push_back(unreach_pos);
-    rep(i, min((int)order.size(), 2))
-        cand_pos.push_back(order[i].second);
+//     auto dist = calc_dist(vector<Pos>(all(my_state.ninjas)), forbid_shadow);
+//     vector<pair<int, Pos>> order;
+//     Pos unreach_pos(-1, -1);
+//     int max_d = -1;
+//     Pos max_pos;
+//     rep(y, h) rep(x, w)
+//     {
+//         if (dist.get(x, y) > max_d)
+//         {
+//             max_d = dist.get(x, y);
+//             max_pos = Pos(x, y);
+//         }
+//         else if (dist.get(x, y) == -1 && !my_state.rock.get(x, y))
+//             unreach_pos = Pos(x, y);
+//     }
+//
+//     vector<Pos> cand_pos(all(my_state.ninjas));
+//     if (in_field(unreach_pos))
+//         cand_pos.push_back(unreach_pos);
+//     cand_pos.push_back(max_pos);
+//
+//     vector<Pos> starts(all(my_state.ninjas));
+//     starts.push_back(max_pos);
+//     rep(i, min((int)order.size(), 2))
+//     {
+//     }
     return cand_pos;
 }
 vector<SimulationResult> simulate_next_state_using_shadow(const State& my_state, int shadow_mp)
@@ -1188,7 +1248,7 @@ vector<SimulationResult> simulate_next_state_using_shadow(const State& my_state,
 
     set<Pos> soul_set(all(my_state.souls));
 
-    auto move_results = simulate_ninja_move(my_state.ninjas, my_state.rock, my_state.dogs, my_state.souls);
+    auto move_results = simulate_ninja_move<true>(my_state.ninjas, my_state.rock, my_state.dogs, my_state.souls);
     vector<SimulationResult> simulation_results;
     for (const auto& move_result : move_results)
     {
@@ -1216,14 +1276,15 @@ vector<SimulationResult> simulate_next_state_using_shadow(const State& my_state,
             if (move_result.rock.get(shadow_pos))
                 continue;
 
-            auto dogs = simulate_dog_move(my_state.dogs, vector<Pos>{shadow_pos}, move_result.rock);
-            if (!check_dead(move_result.ninjas, dogs))
+//             auto dogs = simulate_dog_move(my_state.dogs, vector<Pos>{shadow_pos}, move_result.rock);
+//             if (!check_dead(move_result.ninjas, dogs))
             {
                 State nstate;
                 nstate.mp = my_state.mp + 2 * got_souls.size() - shadow_mp;
                 nstate.ninjas = move_result.ninjas;
                 nstate.rock = move_result.rock;
-                nstate.dogs = dogs;
+//                 nstate.dogs = dogs;
+                nstate.dogs = my_state.dogs;
                 nstate.souls = rem_souls;
 
                 Action action(move_result.moves, Skills::my_shadow(shadow_pos));
@@ -1515,6 +1576,7 @@ Action beam_search(const InputInfo& input_info, ShadowKillJudger& shadow_kill_ju
     {
         State state;
         Action first_action;
+        Skill last_skill;
 
         int diff_mp;
         int summon_dogs;
@@ -1700,6 +1762,8 @@ Action beam_search(const InputInfo& input_info, ShadowKillJudger& shadow_kill_ju
         -skill_costs[SkillID::ACC],
         -skill_costs[SkillID::MY_SHADOW],
         -skill_costs[SkillID::MY_THUNDER],
+//         -2 * skill_costs[SkillID::MY_SHADOW],
+//         -3 * skill_costs[SkillID::MY_SHADOW],
         min(-4 * skill_costs[SkillID::MY_SHADOW], -2 * skill_costs[SkillID::SLASH]),
         -1919810
     };
@@ -1718,6 +1782,7 @@ Action beam_search(const InputInfo& input_info, ShadowKillJudger& shadow_kill_ju
         SearchState init_state = {
             input_info.my_info.state,
             Action(),
+            Skills::NONE,
 
             0,
             0,
@@ -1748,6 +1813,19 @@ Action beam_search(const InputInfo& input_info, ShadowKillJudger& shadow_kill_ju
                     auto search_state = beams[turn][lowers_mp_diff_i].top();
                     beams[turn][lowers_mp_diff_i].pop();
 
+                    if (turn > 0)
+                    {
+                        if (search_state.last_skill.id == SkillID::MY_SHADOW)
+                            search_state.state.dogs = simulate_dog_move(search_state.state.dogs, vector<Pos>{search_state.last_skill.pos()}, search_state.state.rock);
+                        else
+                            search_state.state.dogs = simulate_dog_move(search_state.state.dogs, search_state.state.ninjas, search_state.state.rock);
+                    }
+                    if (check_dead(search_state.state.ninjas, search_state.state.dogs))
+                    {
+                        --cho;
+                        continue;
+                    }
+
                     {
                         auto key = make_tuple(search_state.state.ninjas, search_state.state.rock, search_state.state.dogs);
                         if (visited[turn].count(key))
@@ -1767,6 +1845,13 @@ Action beam_search(const InputInfo& input_info, ShadowKillJudger& shadow_kill_ju
                         }
                     }
 
+                    if (turn > 0 && predicted_num_sent_dogs[turn - 1] > 0)
+                    {
+                        auto sent_dogs = simulate_sent_dogs(predicted_num_sent_dogs[turn - 1],
+                                search_state.state.ninjas, search_state.state.rock, search_state.state.dogs);
+                        search_state.state.dogs.insert(search_state.state.dogs.end(), all(sent_dogs));
+                    }
+
                     auto results = simulate_next_state(search_state.state);
                     if (search_state.state.dogs.size() > 0 && search_state.state.mp >= skill_costs[5])
                     {
@@ -1783,7 +1868,7 @@ Action beam_search(const InputInfo& input_info, ShadowKillJudger& shadow_kill_ju
                         auto slash_results = simulate_next_state_using_slash(search_state.state, skill_costs[SkillID::SLASH]);
                         results.insert(results.end(), all(slash_results));
                     }
-                    if (search_state.state.mp >= skill_costs[SkillID::ACC])
+                    if (skill_costs[SkillID::ACC] <= 2 && search_state.state.mp >= skill_costs[SkillID::ACC])
                     {
                         auto acc_results = simulate_next_state_using_acc(search_state.state, skill_costs[SkillID::ACC]);
                         results.insert(results.end(), all(acc_results));
@@ -1794,6 +1879,7 @@ Action beam_search(const InputInfo& input_info, ShadowKillJudger& shadow_kill_ju
                         SearchState nsearch_state;
                         nsearch_state.state = result.state;
                         nsearch_state.first_action = turn == 0 ? result.action : search_state.first_action;
+                        nsearch_state.last_skill = result.action.skill;
 
                         State state_before_moving = search_state.state;
                         if (result.action.skill.id == SkillID::MY_THUNDER)
@@ -1834,7 +1920,10 @@ Action beam_search(const InputInfo& input_info, ShadowKillJudger& shadow_kill_ju
                             ++nsearch_state.accs;
                         }
                         else
+                        {
                             assert(result.state.dogs.size() == search_state.state.dogs.size());
+                            assert(result.state.dogs.size() == nsearch_state.state.dogs.size());
+                        }
 
 
 
@@ -1850,12 +1939,12 @@ Action beam_search(const InputInfo& input_info, ShadowKillJudger& shadow_kill_ju
                                 nsearch_state.dog_can_attack += 1;
                         }
 
-                        if (predicted_num_sent_dogs[turn] > 0)
-                        {
-                            auto sent_dogs = simulate_sent_dogs(predicted_num_sent_dogs[turn],
-                                    result.state.ninjas, result.state.rock, result.state.dogs);
-                            nsearch_state.state.dogs.insert(nsearch_state.state.dogs.end(), all(sent_dogs));
-                        }
+//                         if (predicted_num_sent_dogs[turn] > 0)
+//                         {
+//                             auto sent_dogs = simulate_sent_dogs(predicted_num_sent_dogs[turn],
+//                                     result.state.ninjas, result.state.rock, result.state.dogs);
+//                             nsearch_state.state.dogs.insert(nsearch_state.state.dogs.end(), all(sent_dogs));
+//                         }
 
                         nsearch_state.score = eval(turn, search_state.state, nsearch_state, result);
 
@@ -1876,6 +1965,19 @@ Action beam_search(const InputInfo& input_info, ShadowKillJudger& shadow_kill_ju
             {
                 if (!beams[turns][lowers_mp_diff_i].empty() && beams[turns][lowers_mp_diff_i].top().score > 0)
                 {
+                    auto& search_state = beams[turns][lowers_mp_diff_i].top();
+                    vector<Dog> dogs;
+                    if (search_state.last_skill.id == SkillID::MY_SHADOW)
+                        dogs = simulate_dog_move(search_state.state.dogs, vector<Pos>{search_state.last_skill.pos()}, search_state.state.rock);
+                    else
+                        dogs = simulate_dog_move(search_state.state.dogs, search_state.state.ninjas, search_state.state.rock);
+                    if (check_dead(search_state.state.ninjas, dogs))
+                    {
+                        beams[turns][lowers_mp_diff_i].pop();
+                        --lowers_mp_diff_i;
+                        continue;
+                    }
+
                     if (beams[turns][lowers_mp_diff_i].top().score > 4 * 800)
                         skip_end = true;
 
@@ -1916,6 +2018,19 @@ END:
     {
         if (beams[turns][lowers_mp_diff_i].size() > 0 && make_pair(turns, beams[turns][lowers_mp_diff_i].top().score) > best_score)
         {
+            auto& search_state = beams[turns][lowers_mp_diff_i].top();
+            vector<Dog> dogs;
+            if (search_state.last_skill.id == SkillID::MY_SHADOW)
+                dogs = simulate_dog_move(search_state.state.dogs, vector<Pos>{search_state.last_skill.pos()}, search_state.state.rock);
+            else
+                dogs = simulate_dog_move(search_state.state.dogs, search_state.state.ninjas, search_state.state.rock);
+            if (check_dead(search_state.state.ninjas, dogs))
+            {
+                beams[turns][lowers_mp_diff_i].pop();
+                --lowers_mp_diff_i;
+                continue;
+            }
+
             best_score = make_pair(turns, beams[turns][lowers_mp_diff_i].top().score);
             best_action = beams[turns][lowers_mp_diff_i].top().first_action;
 
