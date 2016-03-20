@@ -1578,9 +1578,11 @@ Action beam_search(const InputInfo& input_info, ShadowKillJudger& shadow_kill_ju
         Action first_action;
         Skill last_skill;
 
+        int got_souls;
         int diff_mp;
         int summon_dogs;
 
+        int used_skills;
         int thunders;
         int accs;
 
@@ -1716,9 +1718,10 @@ Action beam_search(const InputInfo& input_info, ShadowKillJudger& shadow_kill_ju
         score -= search_state.dog_can_attack;
         score *= 100;
 
-        score += 5 * search_state.summon_dogs;
+        score += 6 * search_state.got_souls;
+        score += 4 * search_state.summon_dogs;
         score += search_state.diff_mp;
-        score -= 3 * search_state.accs;
+        score -= search_state.accs;
         if (search_state.state.mp < skill_costs[SkillID::MY_SHADOW] * 4)
             score -= 4;
 
@@ -1761,22 +1764,24 @@ Action beam_search(const InputInfo& input_info, ShadowKillJudger& shadow_kill_ju
     vector<int> lowers_mp_diff = {
         0,
 //         -skill_costs[SkillID::ACC],
-        -skill_costs[SkillID::MY_SHADOW],
-        -skill_costs[SkillID::MY_THUNDER],
+//         -skill_costs[SkillID::MY_SHADOW],
+//         -skill_costs[SkillID::MY_THUNDER],
+        -min(skill_costs[SkillID::MY_SHADOW], skill_costs[SkillID::MY_THUNDER]),
 //         -2 * skill_costs[SkillID::MY_SHADOW],
 //         -3 * skill_costs[SkillID::MY_SHADOW],
-        min(-4 * skill_costs[SkillID::MY_SHADOW], -2 * skill_costs[SkillID::SLASH]),
+        -2 * min(skill_costs[SkillID::MY_SHADOW], skill_costs[SkillID::MY_THUNDER]),
+//         min(-4 * skill_costs[SkillID::MY_SHADOW], -2 * skill_costs[SkillID::SLASH]),
         -1919810
     };
     if (skill_costs[SkillID::ACC] <= 2)
         lowers_mp_diff.push_back(-skill_costs[SkillID::ACC]);
     uniq(lowers_mp_diff);
     reverse(all(lowers_mp_diff));
-    const int MAX_NUM_LOWERS = 6;
+    const int MAX_NUM_LOWERS = 5;
     const int NUM_LOWERS = lowers_mp_diff.size();
 
     const int turns = 6;
-    int max_iters = 5;
+    int max_iters = 10;
     const int chokudai_width = 5;
     priority_queue<SearchState> beams[turns + 1][NUM_LOWERS];
     set<tuple<array<Pos, NINJAS>, BoolBoard, vector<Dog>>> visited[turns + 1];
@@ -1789,10 +1794,12 @@ Action beam_search(const InputInfo& input_info, ShadowKillJudger& shadow_kill_ju
 
             0,
             0,
+            0,
 
             0,
             0,
 
+            0,
             0,
             0,
 
@@ -1805,11 +1812,12 @@ Action beam_search(const InputInfo& input_info, ShadowKillJudger& shadow_kill_ju
     pair<int, double> best_score(0, 1e60);
     for (int iter = 0; iter < max_iters && iter < 20; ++iter)
     {
+        dump(iter);
         for (int turn = 0; turn < turns; ++turn)
         {
             rep(lowers_mp_diff_i, NUM_LOWERS)
             {
-                const int cur_width = lowers_mp_diff_i == 0 ? 3 * chokudai_width : chokudai_width;
+                const int cur_width = lowers_mp_diff_i == 0 ? 5 * chokudai_width : chokudai_width;
                 for (int cho = 0; cho < cur_width && !beams[turn][lowers_mp_diff_i].empty(); ++cho)
                 {
                     if (timer.get_elapsed() > ABSOLUTE_TL_SEC)
@@ -1905,11 +1913,16 @@ Action beam_search(const InputInfo& input_info, ShadowKillJudger& shadow_kill_ju
 
                         const int got_souls = (int)search_state.state.souls.size() - (int)result.state.souls.size();
                         assert(got_souls >= 0);
+                        nsearch_state.got_souls = search_state.got_souls + got_souls;
 
                         nsearch_state.diff_mp = search_state.diff_mp;
                         nsearch_state.diff_mp += 2 * got_souls;
+                        nsearch_state.used_skills = search_state.used_skills;
                         if (result.action.skill.used())
+                        {
                             nsearch_state.diff_mp -= skill_costs[result.action.skill.id];
+                            ++nsearch_state.used_skills;
+                        }
 
                         nsearch_state.summon_dogs = search_state.summon_dogs + got_souls;
 
@@ -1957,11 +1970,12 @@ Action beam_search(const InputInfo& input_info, ShadowKillJudger& shadow_kill_ju
 
                         nsearch_state.score = eval(turn, search_state.state, nsearch_state, result);
 
-                        int nlowers_mp_diff_i = 0;
-                        while (nsearch_state.diff_mp < lowers_mp_diff[nlowers_mp_diff_i])
-                            ++nlowers_mp_diff_i;
-                        assert(nlowers_mp_diff_i < NUM_LOWERS);
-                        beams[turn + 1][nlowers_mp_diff_i].push(nsearch_state);
+//                         int nlowers_mp_diff_i = 0;
+//                         while (nsearch_state.diff_mp < lowers_mp_diff[nlowers_mp_diff_i])
+//                             ++nlowers_mp_diff_i;
+//                         assert(nlowers_mp_diff_i < NUM_LOWERS);
+//                         beams[turn + 1][nlowers_mp_diff_i].push(nsearch_state);
+                        beams[turn + 1][min(nsearch_state.used_skills, NUM_LOWERS - 1)].push(nsearch_state);
                     }
                 }
             }
@@ -1987,8 +2001,8 @@ Action beam_search(const InputInfo& input_info, ShadowKillJudger& shadow_kill_ju
                         continue;
                     }
 
-                    if (beams[turns][lowers_mp_diff_i].top().score > 4 * 800)
-                        skip_end = true;
+//                     if (beams[turns][lowers_mp_diff_i].top().got_souls >= 4)
+//                         skip_end = true;
 
                     if (beams[turns][lowers_mp_diff_i].top().score >= 0)
                         all_negative = false;
