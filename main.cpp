@@ -1812,11 +1812,12 @@ Action beam_search(const InputInfo& input_info, ShadowKillJudger& shadow_kill_ju
     uniq(lowers_mp_diff);
     reverse(all(lowers_mp_diff));
     const int MAX_NUM_LOWERS = 5;
-    const int NUM_LOWERS = lowers_mp_diff.size();
+//     const int NUM_LOWERS = lowers_mp_diff.size();
+    const int NUM_LOWERS = 2;
 
     const int turns = 6;
     int max_iters = 20;
-    const int chokudai_width = 5;
+    const int chokudai_width = 10;
     priority_queue<SearchState> beams[turns + 1][NUM_LOWERS];
     set<tuple<array<Pos, NINJAS>, BoolBoard, vector<Dog>>> visited[turns + 1];
 
@@ -2056,19 +2057,22 @@ END:
                 break;
             }
         }
-        auto& ss = beams[turns][0].top();
-        if (ss.score > 0
-            && !ss.first_action.skill.used()
-            && ss.state.mp - skill_costs[SkillID::ENE_SHADOW] >= 4 * skill_costs[SkillID::MY_SHADOW])
+        if (beams[turns][0].size() > 0)
         {
-            Pos ene_shadow_pos = shadow_kill_judger.search_best_pos_to_kill_risky_soul(input_info.enemy_info.state);
-            if (ene_shadow_pos.x != -1)
+            auto& ss = beams[turns][0].top();
+            if (ss.score > 0
+                    && !ss.first_action.skill.used()
+                    && ss.state.mp - skill_costs[SkillID::ENE_SHADOW] >= 4 * skill_costs[SkillID::MY_SHADOW])
             {
-                ++shadow_kill_judger.attack_tries;
+                Pos ene_shadow_pos = shadow_kill_judger.search_best_pos_to_kill_risky_soul(input_info.enemy_info.state);
+                if (ene_shadow_pos.x != -1)
+                {
+                    ++shadow_kill_judger.attack_tries;
 
-                Action action = ss.first_action;
-                action.skill = Skills::ene_shadow(ene_shadow_pos);
-                return action;
+                    Action action = ss.first_action;
+                    action.skill = Skills::ene_shadow(ene_shadow_pos);
+                    return action;
+                }
             }
         }
     }
