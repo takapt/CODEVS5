@@ -601,14 +601,14 @@ vector<SimulateNinjaMoveResult> simulate_ninja_move(const array<Pos, NINJAS>& in
 
                     if (!USED_SHADOW)
                     {
-                        if (MOVES - 1 - move_i <= 1)
-                        {
-                            if (is_dog.get(next))
-                                continue;
-                        }
-                        else if (MOVES - 1 == move_i)
+                        if (MOVES - 1 == move_i)
                         {
                             if (dead.get(next))
+                                continue;
+                        }
+                        else if (MOVES - 1 - move_i <= 1)
+                        {
+                            if (is_dog.get(next))
                                 continue;
                         }
                     }
@@ -669,9 +669,17 @@ vector<SimulateNinjaMoveResult> simulate_ninja_move(const array<Pos, NINJAS>& in
 
 vector<SimulateNinjaMoveResult> simulate_ninja_move_using_acc(const array<Pos, NINJAS>& init_ninjas, const BoolBoard& init_rock, const vector<Dog>& dogs, const vector<Pos>& souls)
 {
-    BoolBoard is_dog;
+    const int MOVES = 3;
+
+    BoolBoard is_dog, dead;
     for (auto& dog : dogs)
+    {
         is_dog.set(dog.pos, true);
+
+        dead.set(dog.pos, true);
+        rep(dir, 4)
+            dead.set(dog.pos.next(dir), true);
+    }
 
     map<Pos, int> soul_index;
     rep(i, souls.size())
@@ -688,7 +696,7 @@ vector<SimulateNinjaMoveResult> simulate_ninja_move_using_acc(const array<Pos, N
         for (auto& it : dp)
             q.push_back(it.first);
 
-        rep(move_i, 3)
+        rep(move_i, MOVES)
         {
             nq.clear();
             for (const auto& key : q)
@@ -700,9 +708,22 @@ vector<SimulateNinjaMoveResult> simulate_ninja_move_using_acc(const array<Pos, N
 
                 rep(dir, 4)
                 {
-                    Pos cur = ninjas[ninja_id];
-                    Pos next = cur.next(dir);
+                    const Pos cur = ninjas[ninja_id];
+                    const Pos next = cur.next(dir);
                     assert(!rock.get(cur));
+
+                    if (move_i == 0 && !is_dog.get(next))
+                        continue;
+                    if (MOVES - 1 == move_i)
+                    {
+                        if (dead.get(next))
+                            continue;
+                    }
+                    else if (MOVES - 1 - move_i <= 1)
+                    {
+                        if (is_dog.get(next))
+                            continue;
+                    }
 
                     auto can_move = [&]()
                     {
@@ -742,7 +763,7 @@ vector<SimulateNinjaMoveResult> simulate_ninja_move_using_acc(const array<Pos, N
                             nmoves[ninja_id].push_back(dir);
 
                             dp[nkey] = nmoves;
-                            if (move_i < 3 - 1)
+                            if (move_i < MOVES - 1)
                                 nq.push_back(nkey);
                         }
                     }
@@ -754,10 +775,8 @@ vector<SimulateNinjaMoveResult> simulate_ninja_move_using_acc(const array<Pos, N
 
     vector<SimulateNinjaMoveResult> results;
     for (auto& it : dp)
-    {
-        if (it.second[0].size() == 3 || it.second[1].size() == 3)
+        if (max(it.second[0].size(), it.second[1].size()) == 3)
             results.push_back(SimulateNinjaMoveResult{get<1>(it.first), get<2>(it.first), it.second, get<0>(it.first)});
-    }
     return results;
 }
 
@@ -1559,13 +1578,13 @@ vector<int> predict_ene_num_sent_dogs(const State& state)
 
 Action beam_search(const InputInfo& input_info, ShadowKillJudger& shadow_kill_judger)
 {
-    const int predicted_rem_turns = max(30, 90 - g_turn);
+    const int predicted_rem_turns = max(20, 90 - g_turn);
 #ifdef NO_TIMER
     const double LOOSE_TL_SEC = 100000;
     const double ABSOLUTE_TL_SEC = 100000;
 #else
     const double LOOSE_TL_SEC = min<double>(16.0, input_info.ms / 1000.0 / predicted_rem_turns);
-    const double ABSOLUTE_TL_SEC = min<double>(LOOSE_TL_SEC, input_info.ms / 1000.0 * 0.3);
+    const double ABSOLUTE_TL_SEC = min<double>(LOOSE_TL_SEC, input_info.ms / 1000.0 * 0.25);
 #endif
     Timer timer;
     timer.start();
@@ -1796,7 +1815,7 @@ Action beam_search(const InputInfo& input_info, ShadowKillJudger& shadow_kill_ju
     const int NUM_LOWERS = lowers_mp_diff.size();
 
     const int turns = 6;
-    int max_iters = 10;
+    int max_iters = 20;
     const int chokudai_width = 5;
     priority_queue<SearchState> beams[turns + 1][NUM_LOWERS];
     set<tuple<array<Pos, NINJAS>, BoolBoard, vector<Dog>>> visited[turns + 1];
@@ -2011,7 +2030,7 @@ Action beam_search(const InputInfo& input_info, ShadowKillJudger& shadow_kill_ju
 //                     if (beams[turns][lowers_mp_diff_i].top().got_souls >= 4)
 //                         skip_end = true;
 
-                    if (beams[turns][lowers_mp_diff_i].top().score >= 0)
+                    if (beams[turns][lowers_mp_diff_i].top().got_souls > 0)
                         all_negative = false;
                 }
             }
@@ -2027,6 +2046,16 @@ END:
 
     if (input_info.enemy_info.state.mp >= skill_costs[SkillID::ENE_SHADOW] && shadow_kill_judger.should_attack() && !beams[turns][0].empty() && input_info.my_info.state.mp >= skill_costs[SkillID::ENE_SHADOW])
     {
+        while (!beams[turns][0].empty() && beams[turns][0].top().score > 0)
+        {
+            auto ss = beams[turns][0].top();
+            beams[turns][0].pop();
+            if (!ss.simulate_dog_ret_is_dead())
+            {
+                beams[turns][0].push(ss);
+                break;
+            }
+        }
         auto& ss = beams[turns][0].top();
         if (ss.score > 0
             && !ss.first_action.skill.used()
