@@ -1730,15 +1730,21 @@ Action beam_search(const InputInfo& input_info, ShadowKillJudger& shadow_kill_ju
         }
         return death_risk;
     };
-    static const auto can_dog_attack = [](const array<Pos, NINJAS>& cur_ninjas, const vector<Dog>& prev_dogs)
+    static const auto count_danger_ninjas = [](const array<Pos, NINJAS>& cur_ninjas, const vector<Dog>& prev_dogs)
     {
+        int danger_ninjas = 0;
         rep(ninja_id, NINJAS)
         {
             for (auto& dog : prev_dogs)
+            {
                 if (cur_ninjas[ninja_id].dist(dog.pos) <= 1)
-                    return true;
+                {
+                    ++danger_ninjas;
+                    break;
+                }
+            }
         }
-        return false;
+        return danger_ninjas;
     };
 
     const auto eval = [&](const int turn, const State& prev_state, const SearchState& search_state, const SimulationResult& simulation_result)
@@ -1959,13 +1965,11 @@ Action beam_search(const InputInfo& input_info, ShadowKillJudger& shadow_kill_ju
                             + calc_rock_attack_risk(turn, state_before_moving, result);
 
                         nsearch_state.dog_can_attack = search_state.dog_can_attack;
-                        if (can_dog_attack(result.state.ninjas, state_before_moving.dogs))
-                        {
-                            if (result.action.skill.id == SkillID::MY_SHADOW)
-                                nsearch_state.dog_can_attack += 0.5;
-                            else
-                                nsearch_state.dog_can_attack += 1;
-                        }
+                        const int danger_ninjas = count_danger_ninjas(result.state.ninjas, state_before_moving.dogs);
+                        if (result.action.skill.id == SkillID::MY_SHADOW)
+                            nsearch_state.dog_can_attack += 0.5 * danger_ninjas;
+                        else
+                            nsearch_state.dog_can_attack += 1 * danger_ninjas;
 
                         nsearch_state.score = eval(turn, search_state.state, nsearch_state, result);
 
