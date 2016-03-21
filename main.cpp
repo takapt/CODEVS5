@@ -1815,7 +1815,7 @@ Action beam_search(const InputInfo& input_info, ShadowKillJudger& shadow_kill_ju
     const int NUM_LOWERS = 2;
 
     const int turns = 6;
-    const int max_iters = 5;
+    int max_iters = 100;
     const int chokudai_width = 5;
     priority_queue<SearchState> beams[turns + 1][NUM_LOWERS];
     set<tuple<array<Pos, NINJAS>, BoolBoard, vector<Dog>>> visited[turns + 1];
@@ -2026,8 +2026,8 @@ Action beam_search(const InputInfo& input_info, ShadowKillJudger& shadow_kill_ju
                         all_negative = false;
                 }
             }
-//             if (all_negative)
-//                 ++max_iters;
+            if (all_negative)
+                ++max_iters;
             if (!all_negative && timer.get_elapsed() > LOOSE_TL_SEC)
                 break;
             if (skip_end)
