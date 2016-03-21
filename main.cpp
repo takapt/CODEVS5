@@ -2047,12 +2047,6 @@ END:
         {
             auto search_state = beams[turns][lowers_mp_diff_i].top();
             beams[turns][lowers_mp_diff_i].pop();
-//             vector<Dog> dogs;
-//             if (search_state.last_skill.id == SkillID::MY_SHADOW)
-//                 dogs = simulate_dog_move(search_state.state.dogs, vector<Pos>{search_state.last_skill.pos()}, search_state.state.rock);
-//             else
-//                 dogs = simulate_dog_move(search_state.state.dogs, search_state.state.ninjas, search_state.state.rock);
-//             if (check_dead(search_state.state.ninjas, dogs))
             if (search_state.simulate_dog_ret_is_dead())
             {
                 beams[turns][lowers_mp_diff_i].pop();
