@@ -108,6 +108,39 @@ public:
     }
 };
 
+template <typename T, int SIZE>
+class Vector
+{
+public:
+    Vector() :
+        size_(0)
+    {
+    }
+
+    void push_back(const T& v)
+    {
+        assert(size_ < SIZE - 1);
+        data[size_++] = v;
+    }
+
+    const T& operator[](int index) const
+    {
+        assert(0 <= index && index < size());
+        return data[index];
+    }
+    T& operator[](int index)
+    {
+        assert(0 <= index && index < size());
+        return data[index];
+    }
+
+    int size() const { return size_; }
+
+private:
+    T data[SIZE];
+    int size_;
+};
+
 #ifdef _MSC_VER
 #include <Windows.h>
     double get_ms() { return (double)GetTickCount64() / 1000; }
