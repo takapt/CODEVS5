@@ -136,8 +136,8 @@ public:
 };
 
 
-const int DX[] = { +0, +1, +0, -1 };
-const int DY[] = { +1, +0, -1, +0 };
+const int8_t DX[] = { +0, +1, +0, -1 };
+const int8_t DY[] = { +1, +0, -1, +0 };
 const char* S_DIR = "DRUL";
 const int DOWN = 0, RIGHT = 1, UP = 2, LEFT = 3;
 
@@ -170,8 +170,8 @@ bool in_rect(int x, int y)
 
 struct Pos
 {
-    int x, y;
-    Pos(int x, int y)
+    int8_t x, y;
+    Pos(int8_t x, int8_t y)
         : x(x), y(y)
     {
     }
@@ -516,12 +516,12 @@ public:
             if (skill.id == 0)
                 os << 0 << endl;
             else if (skill.id == 7)
-                os << 7 << " " << skill.pos_.x << endl;
+                os << 7 << " " << (int)skill.pos_.x << endl;
             else
             {
                 assert(1 <= skill.id && skill.id <= 6);
                 assert(in_field(skill.pos()));
-                os << skill.id << " " << skill.pos().y << " " << skill.pos().x << endl;
+                os << skill.id << " " << (int)skill.pos().y << " " << (int)skill.pos().x << endl;
             }
         }
         else
@@ -1033,8 +1033,11 @@ PlayerInfo input_player_info()
     rep(i, NINJAS)
     {
         int id;
-        Pos p;
-        cin >> id >> p.y >> p.x;
+        int x, y;
+//         cin >> id >> p.y >> p.x;
+        cin >> id >> y >> x;
+        Pos p(x, y);
+//         dump(make_pair(p.x, p.y));
         assert(in_field(p));
         state.ninjas[id] = p;
     }
@@ -1045,7 +1048,10 @@ PlayerInfo input_player_info()
     rep(i, num_dogs)
     {
         Dog dog;
-        cin >> dog.id >> dog.pos.y >> dog.pos.x;
+        int x, y;
+//         cin >> dog.id >> dog.pos.y >> dog.pos.x;
+        cin >> dog.id >> y >> x;
+        dog.pos = Pos(x, y);
         assert(in_field(dog.pos));
         state.dogs.push_back(dog);
     }
@@ -1055,8 +1061,11 @@ PlayerInfo input_player_info()
     assert(num_souls <= 8);
     rep(i, num_souls)
     {
-        Pos p;
-        cin >> p.y >> p.x;
+//         Pos p;
+//         cin >> p.y >> p.x;
+        int x, y;
+        cin >> y >> x;
+        Pos p(x, y);
         assert(in_field(p));
         state.souls.push_back(p);
     }
