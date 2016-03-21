@@ -1781,8 +1781,8 @@ Action beam_search(const InputInfo& input_info, ShadowKillJudger& shadow_kill_ju
 
         score += 6 * search_state.got_souls;
         score += 4 * search_state.summon_dogs;
-//         score += search_state.diff_mp;
         score -= 2 * search_state.used_skills;
+        score += (search_state.diff_mp >= 0 ? +1 : -1) * (abs(search_state.diff_mp) / 10 * 10);
         score -= search_state.accs;
         if (search_state.state.mp < skill_costs[SkillID::MY_SHADOW] * 4)
             score -= 4;
