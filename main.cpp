@@ -1819,7 +1819,7 @@ Action beam_search(const InputInfo& input_info, ShadowKillJudger& shadow_kill_ju
     pair<int, double> best_score(0, 1e60);
     for (int iter = 0; iter < max_iters && timer.get_elapsed() < ABSOLUTE_TL_SEC; ++iter)
     {
-        dump(iter);
+        bool new_pop = false;
         for (int turn = 0; turn < turns; ++turn)
         {
             rep(lowers_mp_diff_i, NUM_LOWERS)
@@ -1848,6 +1848,8 @@ Action beam_search(const InputInfo& input_info, ShadowKillJudger& shadow_kill_ju
                         }
                         visited[turn].insert(key);
                     }
+
+                    new_pop = true;
 
                     {
                         auto score = make_pair(turn, search_state.score);
@@ -1972,6 +1974,8 @@ Action beam_search(const InputInfo& input_info, ShadowKillJudger& shadow_kill_ju
                 }
             }
         }
+        if (!new_pop)
+            break;
 
         {
             bool all_negative = true;
