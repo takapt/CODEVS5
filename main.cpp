@@ -331,6 +331,60 @@ private:
     int a[h][16];
 };
 
+// class BoolBoard
+// {
+// public:
+//     BoolBoard() : f{}
+//     {
+//     }
+//
+//     bool get(int x, int y) const
+//     {
+//         assert(in_rect(x, y));
+//         return f[y][x];
+//     }
+//     bool get(const Pos& p) const
+//     {
+//         return get(p.x, p.y);
+//     }
+//
+//     void set(int x, int y, bool v)
+//     {
+//         assert(in_rect(x, y));
+//         f[y][x] = v;
+//     }
+//     void set(const Pos& pos, bool v)
+//     {
+//         set(pos.x, pos.y, v);
+//     }
+//
+//     bool operator<(const BoolBoard& other) const
+//     {
+//         for (int y = 1; y < h - 1; ++y)
+// //             for (int x = 1; x < w - 1; ++x)
+//             for (int x = w - 2; x > 0; --x)
+//                 if (get(x, y) != other.get(x, y))
+//                     return get(x, y) < other.get(x, y);
+//         return false;
+//     }
+//
+//     bool operator==(const BoolBoard& other) const
+//     {
+//         for (int y = 1; y < h - 1; ++y)
+//             for (int x = 1; x < w - 1; ++x)
+//                 if (get(x, y) != other.get(x, y))
+//                     return false;
+//         return true;
+//     }
+//
+//     bool operator!=(const BoolBoard& other) const
+//     {
+//         return !(*this == other);
+//     }
+//
+// private:
+//     bool f[h][16];
+// };
 class BoolBoard
 {
 public:
@@ -341,7 +395,7 @@ public:
     bool get(int x, int y) const
     {
         assert(in_rect(x, y));
-        return f[y][x];
+        return f[y] >> x & 1;
     }
     bool get(const Pos& p) const
     {
@@ -351,7 +405,7 @@ public:
     void set(int x, int y, bool v)
     {
         assert(in_rect(x, y));
-        f[y][x] = v;
+        f[y] = (f[y] & ~((unsigned short)1 << x)) | (v << x);
     }
     void set(const Pos& pos, bool v)
     {
@@ -361,18 +415,16 @@ public:
     bool operator<(const BoolBoard& other) const
     {
         for (int y = 1; y < h - 1; ++y)
-            for (int x = 1; x < w - 1; ++x)
-                if (get(x, y) != other.get(x, y))
-                    return get(x, y) < other.get(x, y);
+            if (f[y] != other.f[y])
+                return f[y] < other.f[y];
         return false;
     }
 
     bool operator==(const BoolBoard& other) const
     {
         for (int y = 1; y < h - 1; ++y)
-            for (int x = 1; x < w - 1; ++x)
-                if (get(x, y) != other.get(x, y))
-                    return false;
+            if (f[y] != other.f[y])
+                return false;
         return true;
     }
 
@@ -382,7 +434,7 @@ public:
     }
 
 private:
-    bool f[h][16];
+    unsigned short f[h];
 };
 
 const int SKILLS = 8;
@@ -1793,7 +1845,7 @@ Action beam_search(const InputInfo& input_info, ShadowKillJudger& shadow_kill_ju
     const int NUM_LOWERS = 2;
 
     const int turns = 6;
-    int max_iters = 100;
+    const int max_iters = 5;
     const int chokudai_width = 5;
     priority_queue<SearchState> beams[turns + 1][NUM_LOWERS];
     set<tuple<array<Pos, NINJAS>, BoolBoard, vector<Dog>>> visited[turns + 1];
@@ -2004,8 +2056,8 @@ Action beam_search(const InputInfo& input_info, ShadowKillJudger& shadow_kill_ju
                         all_negative = false;
                 }
             }
-            if (all_negative)
-                ++max_iters;
+//             if (all_negative)
+//                 ++max_iters;
             if (!all_negative && timer.get_elapsed() > LOOSE_TL_SEC)
                 break;
             if (skip_end)
