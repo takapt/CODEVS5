@@ -119,7 +119,7 @@ public:
 
     void push_back(const T& v)
     {
-        assert(size_ < SIZE - 1);
+        assert(size_ < SIZE);
         data[size_++] = v;
     }
 
@@ -210,7 +210,7 @@ struct Pos
     {
     }
     Pos()
-        : x(0), y(0)
+//         : x(0), y(0)
     {
     }
 
