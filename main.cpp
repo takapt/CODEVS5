@@ -2082,7 +2082,6 @@ END:
             beams[turns][lowers_mp_diff_i].pop();
             if (search_state.simulate_dog_ret_is_dead())
             {
-                beams[turns][lowers_mp_diff_i].pop();
                 --lowers_mp_diff_i;
                 continue;
             }
