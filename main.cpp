@@ -1596,13 +1596,13 @@ vector<int> predict_ene_num_sent_dogs(const State& state)
 
 Action beam_search(const InputInfo& input_info, ShadowKillJudger& shadow_kill_judger)
 {
-    const int predicted_rem_turns = max(20, 90 - g_turn);
+    const int predicted_rem_turns = max(20, 100 - g_turn);
 #ifdef NO_TIMER
     const double LOOSE_TL_SEC = 100000;
     const double ABSOLUTE_TL_SEC = 100000;
 #else
     const double LOOSE_TL_SEC = min<double>(16.0, input_info.ms / 1000.0 / predicted_rem_turns);
-    const double ABSOLUTE_TL_SEC = min<double>(LOOSE_TL_SEC, input_info.ms / 1000.0 * 0.25);
+    const double ABSOLUTE_TL_SEC = min<double>(LOOSE_TL_SEC, input_info.ms / 1000.0 * 0.2);
 #endif
     Timer timer;
     timer.start();
