@@ -1786,8 +1786,8 @@ Action beam_search(const InputInfo& input_info, ShadowKillJudger& shadow_kill_ju
     const int NUM_LOWERS = 2;
 
     const int turns = 6;
-    int max_iters = 20;
-    const int chokudai_width = 10;
+    int max_iters = 100;
+    const int chokudai_width = 5;
     priority_queue<SearchState> beams[turns + 1][NUM_LOWERS];
     set<tuple<array<Pos, NINJAS>, BoolBoard, vector<Dog>>> visited[turns + 1];
 
@@ -1819,11 +1819,12 @@ Action beam_search(const InputInfo& input_info, ShadowKillJudger& shadow_kill_ju
     pair<int, double> best_score(0, 1e60);
     for (int iter = 0; iter < max_iters && timer.get_elapsed() < ABSOLUTE_TL_SEC; ++iter)
     {
+        dump(iter);
         for (int turn = 0; turn < turns; ++turn)
         {
             rep(lowers_mp_diff_i, NUM_LOWERS)
             {
-                const int cur_width = lowers_mp_diff_i == 0 ? 5 * chokudai_width : chokudai_width;
+                const int cur_width = lowers_mp_diff_i == 0 ? 2 * chokudai_width : chokudai_width;
                 for (int cho = 0; cho < cur_width && !beams[turn][lowers_mp_diff_i].empty(); ++cho)
                 {
                     if (timer.get_elapsed() > ABSOLUTE_TL_SEC)
@@ -1880,11 +1881,11 @@ Action beam_search(const InputInfo& input_info, ShadowKillJudger& shadow_kill_ju
                         auto slash_results = simulate_next_state_using_slash(search_state.state, skill_costs[SkillID::SLASH]);
                         results.insert(results.end(), all(slash_results));
                     }
-//                     if (/* skill_costs[SkillID::ACC] <= 2 && */search_state.state.mp >= skill_costs[SkillID::ACC])
-//                     {
-//                         auto acc_results = simulate_next_state_using_acc(search_state.state, skill_costs[SkillID::ACC]);
-//                         results.insert(results.end(), all(acc_results));
-//                     }
+                    if (/* skill_costs[SkillID::ACC] <= 2 && */search_state.state.mp >= skill_costs[SkillID::ACC])
+                    {
+                        auto acc_results = simulate_next_state_using_acc(search_state.state, skill_costs[SkillID::ACC]);
+                        results.insert(results.end(), all(acc_results));
+                    }
 
                     for (auto& result : results)
                     {
@@ -2058,13 +2059,15 @@ END:
             best_score = make_pair(turns, search_state.score);
             best_action = search_state.first_action;
 
-//             dump(lowers_mp_diff_i);
-//             dump(search_state.death_risk);
-//             dump(search_state.dog_can_attack);
-//             dump(search_state.score);
-//             dump(search_state.diff_mp);
-//             dump(search_state.summon_dogs);
-//             cerr << endl;
+#if 0
+            dump(lowers_mp_diff_i);
+            dump(search_state.death_risk);
+            dump(search_state.dog_can_attack);
+            dump(search_state.score);
+            dump(search_state.diff_mp);
+            dump(search_state.summon_dogs);
+            cerr << endl;
+#endif
         }
     }
 //     dump(best_score);
