@@ -1812,7 +1812,7 @@ Action beam_search(const InputInfo& input_info, ShadowKillJudger& shadow_kill_ju
         return score;
     };
 
-    const int NUM_LOWERS = 2;
+    const int NUM_SKILL_DIVS = 2;
 
     const int turns = 6;
 #ifdef TUNING
@@ -1821,7 +1821,7 @@ Action beam_search(const InputInfo& input_info, ShadowKillJudger& shadow_kill_ju
     int max_iters = 100;
 #endif
     const int chokudai_width = 5;
-    priority_queue<SearchState> beams[turns + 1][NUM_LOWERS];
+    priority_queue<SearchState> beams[turns + 1][NUM_SKILL_DIVS];
     set<tuple<array<Pos, NINJAS>, BoolBoard, vector<Dog>>> visited[turns + 1];
 
     {
@@ -1855,16 +1855,16 @@ Action beam_search(const InputInfo& input_info, ShadowKillJudger& shadow_kill_ju
         bool new_pop = false;
         for (int turn = 0; turn < turns; ++turn)
         {
-            rep(lowers_mp_diff_i, NUM_LOWERS)
+            rep(skill_div_i, NUM_SKILL_DIVS)
             {
-                const int cur_width = lowers_mp_diff_i == 0 ? 2 * chokudai_width : chokudai_width;
-                for (int cho = 0; cho < cur_width && !beams[turn][lowers_mp_diff_i].empty(); ++cho)
+                const int cur_width = skill_div_i == 0 ? 2 * chokudai_width : chokudai_width;
+                for (int cho = 0; cho < cur_width && !beams[turn][skill_div_i].empty(); ++cho)
                 {
                     if (timer.get_elapsed() > ABSOLUTE_TL_SEC)
                         goto END;
 
-                    auto search_state = beams[turn][lowers_mp_diff_i].top();
-                    beams[turn][lowers_mp_diff_i].pop();
+                    auto search_state = beams[turn][skill_div_i].top();
+                    beams[turn][skill_div_i].pop();
 
                     if (search_state.simulate_dog_ret_is_dead())
                     {
@@ -2000,7 +2000,7 @@ Action beam_search(const InputInfo& input_info, ShadowKillJudger& shadow_kill_ju
 
                         nsearch_state.score = eval(turn, search_state.state, nsearch_state, result);
 
-                        beams[turn + 1][min(nsearch_state.used_skills, NUM_LOWERS - 1)].push(nsearch_state);
+                        beams[turn + 1][min(nsearch_state.used_skills, NUM_SKILL_DIVS - 1)].push(nsearch_state);
                     }
                 }
             }
@@ -2011,22 +2011,22 @@ Action beam_search(const InputInfo& input_info, ShadowKillJudger& shadow_kill_ju
         {
             bool all_negative = true;
             bool skip_end = false;
-            rep(lowers_mp_diff_i, NUM_LOWERS)
+            rep(skill_div_i, NUM_SKILL_DIVS)
             {
-                if (!beams[turns][lowers_mp_diff_i].empty() && beams[turns][lowers_mp_diff_i].top().score > 0)
+                if (!beams[turns][skill_div_i].empty() && beams[turns][skill_div_i].top().score > 0)
                 {
-                    auto search_state = beams[turns][lowers_mp_diff_i].top();
-                    beams[turns][lowers_mp_diff_i].pop();
+                    auto search_state = beams[turns][skill_div_i].top();
+                    beams[turns][skill_div_i].pop();
                     if (search_state.simulate_dog_ret_is_dead())
                     {
-                        --lowers_mp_diff_i;
+                        --skill_div_i;
                         continue;
                     }
-                    beams[turns][lowers_mp_diff_i].push(search_state);
-//                     if (beams[turns][lowers_mp_diff_i].top().got_souls >= 4)
+                    beams[turns][skill_div_i].push(search_state);
+//                     if (beams[turns][skill_div_i].top().got_souls >= 4)
 //                         skip_end = true;
 
-                    if (beams[turns][lowers_mp_diff_i].top().got_souls > 0)
+                    if (beams[turns][skill_div_i].top().got_souls > 0)
                         all_negative = false;
                 }
             }
@@ -2074,15 +2074,15 @@ END:
         }
     }
 
-    rep(lowers_mp_diff_i, NUM_LOWERS)
+    rep(skill_div_i, NUM_SKILL_DIVS)
     {
-        if (beams[turns][lowers_mp_diff_i].size() > 0 && make_pair(turns, beams[turns][lowers_mp_diff_i].top().score) > best_score)
+        if (beams[turns][skill_div_i].size() > 0 && make_pair(turns, beams[turns][skill_div_i].top().score) > best_score)
         {
-            auto search_state = beams[turns][lowers_mp_diff_i].top();
-            beams[turns][lowers_mp_diff_i].pop();
+            auto search_state = beams[turns][skill_div_i].top();
+            beams[turns][skill_div_i].pop();
             if (search_state.simulate_dog_ret_is_dead())
             {
-                --lowers_mp_diff_i;
+                --skill_div_i;
                 continue;
             }
 
@@ -2090,7 +2090,7 @@ END:
             best_action = search_state.first_action;
 
 #if 0
-            dump(lowers_mp_diff_i);
+            dump(skill_div_i);
             dump(search_state.death_risk);
             dump(search_state.dog_can_attack);
             dump(search_state.score);
