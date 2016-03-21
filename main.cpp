@@ -1817,9 +1817,8 @@ Action beam_search(const InputInfo& input_info, ShadowKillJudger& shadow_kill_ju
 
     Action best_action;
     pair<int, double> best_score(0, 1e60);
-    for (int iter = 0; iter < max_iters; ++iter)
+    for (int iter = 0; iter < max_iters && timer.get_elapsed() < ABSOLUTE_TL_SEC; ++iter)
     {
-//         dump(iter);
         for (int turn = 0; turn < turns; ++turn)
         {
             rep(lowers_mp_diff_i, NUM_LOWERS)
