@@ -1602,7 +1602,7 @@ Action beam_search(const InputInfo& input_info, ShadowKillJudger& shadow_kill_ju
     const double ABSOLUTE_TL_SEC = 100000;
 #else
     const double LOOSE_TL_SEC = min<double>(16.0, input_info.ms / 1000.0 / predicted_rem_turns);
-    const double ABSOLUTE_TL_SEC = min<double>(LOOSE_TL_SEC, input_info.ms / 1000.0 * 0.2);
+    const double ABSOLUTE_TL_SEC = min<double>(LOOSE_TL_SEC, input_info.ms / 1000.0 * 0.25);
 #endif
     Timer timer;
     timer.start();
