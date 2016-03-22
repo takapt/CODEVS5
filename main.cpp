@@ -1720,7 +1720,7 @@ Action beam_search(const InputInfo& input_info, ShadowKillJudger& shadow_kill_ju
                                 && next2 != ninjas[ninja_id ^ 1];
                         }
                     };
-                    for (int i = move_i + 1; i < moves.size(); ++i)
+                    for (int i = move_i; i < moves.size(); ++i)
                     {
                         if (can_move(stop, moves[i]))
                         {
